@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: jujudb-postgres
+    env_file:
+      - .env.example
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jujudb -d jujudb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  jujudb:
+    build: .
+    container_name: jujudb-app
+    env_file:
+      - .env.example
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

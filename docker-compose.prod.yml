@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: jujudb-postgres
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - jujudb-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jujudb -d jujudb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  jujudb:
+    build: .
+    container_name: jujudb-app
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - jujudb-network
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jujudb.rule=Host(`jujudb.bapttf.com`)"
+      - "traefik.http.routers.jujudb.entrypoints=websecure"
+      - "traefik.http.routers.jujudb.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jujudb.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+      # Security headers
+      - "traefik.http.middlewares.jujudb-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.jujudb-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.jujudb-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.jujudb-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.jujudb-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.jujudb-headers.headers.forceSTSHeader=true"
+      - "traefik.http.routers.jujudb.middlewares=jujudb-headers"
+
+volumes:
+  postgres_data:
+
+networks:
+  jujudb-network:
+    driver: bridge
+  proxy:
+    external: true
