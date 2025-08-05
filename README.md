@@ -28,7 +28,7 @@ JujuDB est une application web familiale pour gérer l'inventaire de vos espaces
 2. **Configurer les variables d'environnement** (optionnel)
    
    Vous pouvez modifier les variables dans `docker-compose.yml` :
-   - `APP_PASSWORD` : Mot de passe de connexion (défaut: `famille123`)
+   - `APP_PASSWORD` : Mot de passe de connexion (défaut: `your-secure-app-password`)
    - `SESSION_KEY` : Clé de session (changez en production)
    - Paramètres de base de données
 
@@ -41,7 +41,7 @@ JujuDB est une application web familiale pour gérer l'inventaire de vos espaces
    
    Ouvrez votre navigateur sur `http://localhost:8080`
    
-   Mot de passe par défaut : `famille123`
+   Mot de passe par défaut : `your-secure-app-password`
 
 ### Arrêter l'application
 
@@ -58,7 +58,7 @@ docker-compose logs -f jujudb
 ## Utilisation
 
 ### Connexion
-- Utilisez le mot de passe familial configuré (défaut: `famille123`)
+- Utilisez le mot de passe familial configuré (défaut: `your-secure-app-password`)
 - Le cookie de session dure 30 jours
 
 ### Gestion des articles
@@ -120,10 +120,10 @@ docker-compose logs -f jujudb
 | `PORT` | Port d'écoute de l'application | `8080` |
 | `DB_HOST` | Hôte PostgreSQL | `postgres` |
 | `DB_USER` | Utilisateur PostgreSQL | `jujudb` |
-| `DB_PASSWORD` | Mot de passe PostgreSQL | `jujudb123` |
+| `DB_PASSWORD` | Mot de passe PostgreSQL | `your-secure-postgres-password` |
 | `DB_NAME` | Nom de la base de données | `jujudb` |
 | `SESSION_KEY` | Clé de chiffrement des sessions | (à changer) |
-| `APP_PASSWORD` | Mot de passe de l'application | `famille123` |
+| `APP_PASSWORD` | Mot de passe de l'application | `your-secure-app-password` |
 
 ### Sécurité
 
@@ -141,7 +141,7 @@ docker-compose logs -f jujudb
 2. **Créer la base de données**
    ```sql
    CREATE DATABASE jujudb;
-   CREATE USER jujudb WITH PASSWORD 'jujudb123';
+   CREATE USER jujudb WITH PASSWORD 'your-secure-postgres-password';
    GRANT ALL PRIVILEGES ON DATABASE jujudb TO jujudb;
    ```
 3. **Installer les dépendances Go**
