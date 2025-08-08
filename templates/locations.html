@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JujuDB - Gestion des emplacements</title>
+    <!-- Favicon -->
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <!-- Load CSS modules -->
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/locations.css">
+    <link rel="stylesheet" href="/static/css/modals.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1>🧊 JujuDB - Gestion des emplacements</h1>
+            <div class="header-actions">
+                <a href="/dashboard" class="btn btn-secondary">← Retour au tableau de bord</a>
+                <form method="POST" action="/logout" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary">Déconnexion</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="management-container">
+            <!-- Navigation tabs -->
+            <div class="management-tabs">
+                <button class="tab-btn active" data-tab="locations"><i class="fa-solid fa-location-dot"></i> Emplacements</button>
+                <button class="tab-btn" data-tab="sub-locations"><i class="fa-solid fa-layer-group"></i> Sous-emplacements</button>
+                <button class="tab-btn" data-tab="categories"><i class="fa-solid fa-tags"></i> Catégories</button>
+            </div>
+
+            <!-- Locations Tab -->
+            <div id="locations-tab" class="tab-content active">
+                <div class="section-header">
+                    <h2>Gestion des emplacements</h2>
+                    <p>Gérez les emplacements principaux de stockage (congélateur, réfrigérateur, etc.)</p>
+                </div>
+                
+                <div class="add-form-card">
+                    <h3>Ajouter un nouvel emplacement</h3>
+                    <div class="add-form">
+                        <input type="text" id="newLocationName" placeholder="Nom du nouvel emplacement" class="form-input">
+                        <button id="addLocationBtn" class="btn btn-primary">Ajouter</button>
+                    </div>
+                </div>
+                
+                <div class="items-container">
+                    <div id="locationsList" class="items-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sub-locations Tab -->
+            <div id="sub-locations-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Gestion des sous-emplacements</h2>
+                    <p>Gérez les sous-emplacements spécifiques à chaque emplacement principal</p>
+                </div>
+                
+                <div class="add-form-card">
+                    <h3>Ajouter un nouveau sous-emplacement</h3>
+                    <div class="add-form">
+                        <select id="parentLocationSelect" class="form-select">
+                            <option value="">Sélectionner l'emplacement parent...</option>
+                            <!-- Populated dynamically -->
+                        </select>
+                        <input type="text" id="newSubLocationName" placeholder="Nom du sous-emplacement" class="form-input">
+                        <button id="addSubLocationBtn" class="btn btn-primary">Ajouter</button>
+                    </div>
+                </div>
+                
+                <div class="filter-section">
+                    <label for="filterLocationSelect">Filtrer par emplacement :</label>
+                    <select id="filterLocationSelect" class="form-select">
+                        <option value="">Tous les emplacements</option>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                
+                <div class="items-container">
+                    <div id="subLocationsList" class="items-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Categories Tab -->
+            <div id="categories-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Gestion des catégories</h2>
+                    <p>Gérez les catégories d'articles pour une meilleure organisation</p>
+                </div>
+                
+                <div class="add-form-card">
+                    <h3>Ajouter une nouvelle catégorie</h3>
+                    <div class="add-form">
+                        <input type="text" id="newCategoryName" placeholder="Nom de la nouvelle catégorie" class="form-input">
+                        <button id="addCategoryBtn" class="btn btn-primary">Ajouter</button>
+                    </div>
+                </div>
+                
+                <div class="items-container">
+                    <div id="categoriesList" class="items-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Delete confirmation modal -->
+    <div id="confirmDeleteModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="confirmDeleteTitle">Confirmer la suppression</h2>
+                <span class="close" id="closeConfirmDelete">&times;</span>
+            </div>
+            <div class="modal-form">
+                <p id="confirmDeleteMessage">Des éléments sont liés. La suppression entraînera la suppression des éléments suivants :</p>
+                <div class="modal-list" id="confirmDeleteList"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="cancelDeleteBtn">Annuler</button>
+                    <button class="btn btn-danger" id="confirmDeleteBtn">Supprimer définitivement</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load feature modules -->
+    <script src="/static/js/locations.js"></script>
+    <script src="/static/js/sub-locations.js"></script>
+    <script src="/static/js/categories.js"></script>
+    
+    <!-- Load locations page coordinator -->
+    <script src="/static/js/locations-page.js"></script>
+</body>
+</html>

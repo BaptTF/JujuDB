@@ -1,0 +1,260 @@
+/* Management tabs */
+.management-tabs {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #718096;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    font-weight: 600;
+}
+
+.tab-btn:hover {
+    color: #4a5568;
+    background: #f7fafc;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.add-form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+.add-form input,
+.add-form select {
+    flex: 1;
+    padding: 10px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.add-form button {
+    white-space: nowrap;
+}
+
+.items-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 5px;
+    background: #f7fafc;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.list-item:last-child {
+    margin-bottom: 0;
+}
+
+.list-item-name {
+    font-weight: 500;
+    color: #2d3748;
+}
+
+.list-item-parent {
+    font-size: 0.8rem;
+    color: #718096;
+    margin-left: 8px;
+}
+
+/* Management Container */
+.management-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Section Headers */
+.section-header {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.section-header h2 {
+    color: #2d3748;
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.section-header p {
+    color: #718096;
+    font-size: 1.1rem;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Add Form Cards */
+.add-form-card {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+}
+
+.add-form-card h3 {
+    color: #2d3748;
+    margin-bottom: 20px;
+    font-size: 1.25rem;
+}
+
+.form-input, .form-select {
+    padding: 12px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+    min-width: 200px;
+}
+
+.form-input:focus, .form-select:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+/* Filter Section */
+.filter-section {
+    background: #f7fafc;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.filter-section label {
+    font-weight: 600;
+    color: #4a5568;
+    white-space: nowrap;
+}
+
+/* Items Container */
+.items-container {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+}
+
+/* Enhanced Items List */
+.items-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    max-height: none;
+    border: none;
+    padding: 0;
+}
+
+.item-entry {
+    background: #f7fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.item-entry:hover {
+    border-color: #4299e1;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.item-entry h4 {
+    margin: 0 0 10px 0;
+    color: #2d3748;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.item-entry .item-meta {
+    color: #718096;
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+
+.item-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* Loading and Empty States */
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #718096;
+    font-size: 1.1rem;
+}
+
+.no-items {
+    text-align: center;
+    padding: 40px;
+    color: #a0aec0;
+    font-size: 1.1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .management-container {
+        padding: 15px;
+    }
+    
+    .add-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .form-input, .form-select {
+        min-width: unset;
+    }
+    
+    .filter-section {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .items-list {
+        grid-template-columns: 1fr;
+    }
+}

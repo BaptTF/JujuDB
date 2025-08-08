@@ -1,0 +1,307 @@
+/* Items grid */
+.items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    padding: 0 0px;
+}
+
+/* Icon spacing for FA icons in cards */
+.item-meta i,
+.item-details i,
+.item-notes i {
+    margin-right: 6px;
+}
+
+.item-meta .location-icon,
+.item-meta .category-icon,
+.item-details .quantity-icon,
+.item-details .expiry-icon,
+.item-notes .notes-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Icon colors */
+.item-meta .location-icon i { color: #2b6cb0; } /* blue */
+.item-meta .category-icon i { color: #805ad5; } /* purple */
+.item-details .quantity-icon i { color: #2c7a7b; } /* teal */
+.item-notes .notes-icon i { color: #d69e2e; } /* amber */
+
+/* Expiry icon colors by status */
+.item-details .expiry-icon i { color: #718096; } /* default */
+.item-expiry.expired .expiry-icon i { color: #c53030; }
+.item-expiry.expiring-soon .expiry-icon i { color: #dd6b20; }
+.item-expiry.expiring-week .expiry-icon i { color: #d69e2e; }
+.item-expiry.fresh .expiry-icon i { color: #38a169; }
+.item-expiry.no-expiry .expiry-icon i { color: #718096; }
+
+.item-card {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-width: 0; /* Allow flex items to shrink below their content size */
+    max-width: 100%;
+}
+
+.item-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.item-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.3;
+}
+
+.item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Compact icon button styles */
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(4px);
+}
+
+.btn-edit {
+    color: #3182ce;
+    background: #ebf8ff;
+    border: 1px solid #bee3f8;
+}
+
+.btn-edit:hover {
+    background: #3182ce;
+    color: white;
+    border-color: #3182ce;
+    transform: scale(1.05);
+}
+
+.btn-delete {
+    color: #e53e3e;
+    background: #fed7d7;
+    border: 1px solid #fc8181;
+}
+
+.btn-delete:hover {
+    background: #e53e3e;
+    color: white;
+    border-color: #e53e3e;
+    transform: scale(1.05);
+}
+
+/* Item actions container */
+.item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .btn-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+}
+
+/* Extra small screens - use abbreviated text */
+@media (max-width: 480px) {
+    .item-actions .btn-secondary::after {
+        content: "Mod.";
+    }
+    
+    .item-actions .btn-danger::after {
+        content: "Supp.";
+    }
+    
+    .item-actions .btn {
+        font-size: 0;
+        padding: 4px 8px;
+        min-width: 45px;
+    }
+    
+    .item-actions .btn::after {
+        font-size: 0.7rem;
+    }
+}
+
+.item-description {
+    color: #718096;
+    margin-bottom: 15px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-height: 4.5em; /* Limit to ~3 lines */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.item-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 15px;
+    min-width: 0; /* Allow grid items to shrink */
+}
+
+.item-location {
+    font-size: 0.9rem;
+    color: #4a5568;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-width: 0;
+}
+
+.item-location strong {
+    color: #2d3748;
+}
+
+.item-category {
+    font-size: 0.9rem;
+    color: #4a5568;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-width: 0;
+}
+
+.item-category strong {
+    color: #2d3748;
+}
+
+.item-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 15px 0;
+    font-size: 0.9rem;
+}
+
+.item-quantity, .item-expiry {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: #f7fafc;
+    color: #4a5568;
+    font-size: 0.85rem;
+}
+
+.item-expiry.expired {
+    background: #fed7d7;
+    color: #c53030;
+}
+
+.item-expiry.expiring-soon {
+    background: #feebc8;
+    color: #dd6b20;
+}
+
+.item-expiry.expiring-week {
+    background: #fef5e7;
+    color: #d69e2e;
+}
+
+.item-expiry.fresh {
+    background: #c6f6d5;
+    color: #38a169;
+}
+
+.item-expiry.no-expiry {
+    background: #e2e8f0;
+    color: #718096;
+}
+
+.item-notes {
+    margin: 10px 0;
+    padding: 8px 12px;
+    background: #f7fafc;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #4a5568;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+.item-footer {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    text-align: right;
+}
+
+.item-added {
+    color: #a0aec0;
+    font-size: 0.8rem;
+}
+
+.item-date {
+    font-size: 0.8rem;
+    color: #a0aec0;
+}
+
+.item-quantity {
+    font-weight: 600;
+    color: #4a5568;
+}
+
+.item-expiry {
+    color: #e53e3e;
+    font-weight: 600;
+}
+
+.item-expiry.safe {
+    color: #38a169;
+}
+
+.item-expiry.warning {
+    color: #d69e2e;
+}
+
+/* Sub-location display in items */
+.item-sub-location {
+    display: inline-block;
+    background: #e6f3ff;
+    color: #2b6cb0;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 4px;
+}

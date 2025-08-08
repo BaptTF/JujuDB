@@ -4,13 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JujuDB - Tableau de bord</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Favicon -->
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <!-- Load CSS modules -->
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/search.css">
+    <link rel="stylesheet" href="/static/css/articles.css">
+    <link rel="stylesheet" href="/static/css/modals.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body>
     <header class="header">
         <div class="header-content">
             <h1>🧊 JujuDB</h1>
             <div class="header-actions">
+                <a href="/locations" class="btn btn-secondary">Gérer les emplacements</a>
                 <form method="POST" action="/logout" style="display: inline;">
                     <button type="submit" class="btn btn-secondary">Déconnexion</button>
                 </form>
@@ -28,22 +40,17 @@
             <div class="filters">
                 <select id="locationFilter" class="filter-select">
                     <option value="">Tous les emplacements</option>
-                    <option value="Congélateur">Congélateur</option>
-                    <option value="Réfrigérateur">Réfrigérateur</option>
-                    <option value="Garde-manger">Garde-manger</option>
-                    <option value="Cave">Cave</option>
-                    <option value="Garage">Garage</option>
+                    <!-- Options injectées dynamiquement -->
+                </select>
+                
+                <select id="subLocationFilter" class="filter-select" style="display:none;">
+                    <option value="">Tous les sous-emplacements</option>
+                    <!-- Options injectées dynamiquement en fonction de l'emplacement -->
                 </select>
                 
                 <select id="categoryFilter" class="filter-select">
                     <option value="">Toutes les catégories</option>
-                    <option value="Viande">Viande</option>
-                    <option value="Poisson">Poisson</option>
-                    <option value="Légumes">Légumes</option>
-                    <option value="Fruits">Fruits</option>
-                    <option value="Plats préparés">Plats préparés</option>
-                    <option value="Desserts">Desserts</option>
-                    <option value="Autres">Autres</option>
+                    <!-- Options injectées dynamiquement -->
                 </select>
                 
                 <button id="clearFilters" class="btn btn-secondary">Effacer filtres</button>
@@ -70,8 +77,7 @@
             </div>
             <form id="itemForm" class="modal-form">
                 <input type="hidden" id="itemId">
-                
-                <div class="form-group">
+                               <div class="form-group">
                     <label for="itemName">Nom de l'article *</label>
                     <input type="text" id="itemName" required>
                 </div>
@@ -85,38 +91,44 @@
                     <div class="form-group">
                         <label for="itemLocation">Emplacement *</label>
                         <select id="itemLocation" required>
-                            <option value="Congélateur">Congélateur</option>
-                            <option value="Réfrigérateur">Réfrigérateur</option>
-                            <option value="Garde-manger">Garde-manger</option>
-                            <option value="Cave">Cave</option>
-                            <option value="Garage">Garage</option>
+                            <option value="">Sélectionner...</option>
+                            <!-- Options injectées dynamiquement -->
                         </select>
                     </div>
                     
                     <div class="form-group">
-                        <label for="itemCategory">Catégorie</label>
-                        <select id="itemCategory">
+                        <label for="itemSubLocation">Sous-emplacement</label>
+                        <select id="itemSubLocation" style="display:none;">
                             <option value="">Sélectionner...</option>
-                            <option value="Viande">Viande</option>
-                            <option value="Poisson">Poisson</option>
-                            <option value="Légumes">Légumes</option>
-                            <option value="Fruits">Fruits</option>
-                            <option value="Plats préparés">Plats préparés</option>
-                            <option value="Desserts">Desserts</option>
-                            <option value="Autres">Autres</option>
+                            <!-- Options injectées dynamiquement en fonction de l'emplacement -->
                         </select>
                     </div>
                 </div>
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="itemQuantity">Quantité</label>
-                        <input type="number" id="itemQuantity" min="1" value="1">
+                        <label for="itemCategory">Catégorie</label>
+                        <select id="itemCategory">
+                            <option value="">Sélectionner...</option>
+                            <!-- Options injectées dynamiquement -->
+                        </select>
                     </div>
                     
                     <div class="form-group">
+                        <label for="itemQuantity">Quantité</label>
+                        <input type="number" id="itemQuantity" min="1" value="1">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="itemExpiry">Date d'expiration</label>
                         <input type="date" id="itemExpiry">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="itemNotes">Notes</label>
+                        <textarea id="itemNotes" rows="2" placeholder="Informations supplémentaires..."></textarea>
                     </div>
                 </div>
                 
@@ -128,6 +140,15 @@
         </div>
     </div>
 
+    <!-- Load feature modules -->
+    <script src="/static/js/locations.js"></script>
+    <script src="/static/js/sub-locations.js"></script>
+    <script src="/static/js/categories.js"></script>
+    <script src="/static/js/articles.js"></script>
+    <script src="/static/js/filters.js"></script>
+    <script src="/static/js/search.js"></script>
+    
+    <!-- Dashboard coordinator -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>
