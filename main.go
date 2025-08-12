@@ -13,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 	"jujudb/handlers"
+	"jujudb/services"
 )
 
 var (
@@ -107,12 +108,24 @@ func main() {
 
 	// Instantiate handlers
 	authHandler := handlers.NewAuthHandler(store)
+	// Initialize Meilisearch service
+	meilisearchHost := "http://meilisearch:7700"
+	meilisearchKey := "jujudb-master-key-change-in-production"
+	meilisearchService, err := services.NewMeilisearchService(meilisearchHost, meilisearchKey)
+	if err != nil {
+		logrus.WithError(err).Fatal("Failed to initialize Meilisearch service")
+	}
+
+	// Initialize sync service
+	syncService := services.NewSyncService(db, meilisearchService)
+
 	templatesHandler := handlers.NewTemplatesHandler()
-	articlesHandler := handlers.NewArticlesHandler(db)
+	articlesHandler := handlers.NewArticlesHandler(db, syncService)
 	locationsHandler := handlers.NewLocationsHandler(db)
 	subLocationsHandler := handlers.NewSubLocationsHandler(db)
 	categoriesHandler := handlers.NewCategoriesHandler(db)
-	searchHandler := handlers.NewSearchHandler(db)
+	searchHandler := handlers.NewSearchHandler(db, meilisearchService)
+	syncHandler := handlers.NewSyncHandler(syncService)
 
 	// Router
 	r := mux.NewRouter()
@@ -142,6 +155,9 @@ func main() {
 
 	// Search
 	api.HandleFunc("/search", searchHandler.Search).Methods("GET")
+
+	// Sync
+	api.HandleFunc("/sync/all", syncHandler.SyncAll).Methods("POST")
 
 	// Locations
 	api.HandleFunc("/locations", locationsHandler.GetLocations).Methods("GET")

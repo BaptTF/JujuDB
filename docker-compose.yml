@@ -15,6 +15,24 @@ services:
       timeout: 5s
       retries: 5
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: jujudb-meilisearch
+    environment:
+      - MEILI_ENV=development
+      - MEILI_MASTER_KEY=jujudb-master-key-change-in-production
+      - MEILI_HTTP_ADDR=0.0.0.0:7700
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meilisearch_data:/meili_data
+    ports:
+      - "7700:7700"
+    restart: unless-stopped
+    healthcheck:
+      test: set -o pipefail;curl -fsS http://meilisearch:7700/health | grep -q '{"status":"available"}'
+      timeout: 5s
+      retries: 5
+
   jujudb:
     build: .
     container_name: jujudb-app
@@ -25,7 +43,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      meilisearch:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  meilisearch_data:

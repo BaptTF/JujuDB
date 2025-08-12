@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"jujudb/services"
 )
 
 // Item represents an item in the inventory
@@ -32,12 +33,16 @@ type Item struct {
 
 // ArticlesHandler handles all article-related operations
 type ArticlesHandler struct {
-	DB *sql.DB
+	DB   *sql.DB
+	Sync *services.SyncService
 }
 
 // NewArticlesHandler creates a new articles handler
-func NewArticlesHandler(db *sql.DB) *ArticlesHandler {
-	return &ArticlesHandler{DB: db}
+func NewArticlesHandler(db *sql.DB, syncService *services.SyncService) *ArticlesHandler {
+	return &ArticlesHandler{
+		DB:   db,
+		Sync: syncService,
+	}
 }
 
 // GetItems handles GET /api/items
@@ -180,6 +185,15 @@ func (h *ArticlesHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sync item to Meilisearch
+	if h.Sync != nil {
+		go func() {
+			if err := h.Sync.SyncItem(item.ID); err != nil {
+				logrus.WithError(err).WithField("item_id", item.ID).Error("Failed to sync created item to Meilisearch")
+			}
+		}()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(item)
@@ -254,6 +268,16 @@ func (h *ArticlesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item.ID = id
+
+	// Sync updated item to Meilisearch
+	if h.Sync != nil {
+		go func() {
+			if err := h.Sync.SyncItem(id); err != nil {
+				logrus.WithError(err).WithField("item_id", id).Error("Failed to sync updated item to Meilisearch")
+			}
+		}()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(item)
 }
@@ -296,6 +320,15 @@ func (h *ArticlesHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	if rowsAffected == 0 {
 		http.Error(w, "Item not found", http.StatusNotFound)
 		return
+	}
+
+	// Remove item from Meilisearch
+	if h.Sync != nil {
+		go func() {
+			if err := h.Sync.DeleteItem(id); err != nil {
+				logrus.WithError(err).WithField("item_id", id).Error("Failed to delete item from Meilisearch")
+			}
+		}()
 	}
 
 	w.WriteHeader(http.StatusNoContent)

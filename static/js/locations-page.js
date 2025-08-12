@@ -56,6 +56,12 @@ class LocationsPage {
                 if (e.target === this.confirmModal.el) this.hideConfirmDelete();
             });
         }
+
+        // System tab - reindex button
+        const reindexBtn = document.getElementById('reindexBtn');
+        if (reindexBtn) {
+            reindexBtn.addEventListener('click', () => this.handleReindex());
+        }
     }
 
     switchTab(tabName) {
@@ -204,6 +210,61 @@ class LocationsPage {
             this.confirmModal.el.style.display = 'none';
         }
         this.pendingDelete = null;
+    }
+
+    // System tab functionality
+    async handleReindex() {
+        const reindexBtn = document.getElementById('reindexBtn');
+        const statusDiv = document.getElementById('reindexStatus');
+        
+        if (!reindexBtn || !statusDiv) return;
+
+        // Show loading state
+        reindexBtn.disabled = true;
+        reindexBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Réindexation en cours...';
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status-message loading';
+        statusDiv.innerHTML = '<i class="fa-solid fa-spinner"></i> Réindexation de tous les articles en cours...';
+
+        try {
+            const response = await fetch('/api/sync/all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Erreur HTTP: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            // Show success message
+            statusDiv.className = 'status-message success';
+            statusDiv.innerHTML = '<i class="fa-solid fa-check-circle"></i> Réindexation terminée avec succès!';
+            
+            // Auto-hide success message after 5 seconds
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+
+        } catch (error) {
+            console.error('Reindex error:', error);
+            
+            // Show error message
+            statusDiv.className = 'status-message error';
+            statusDiv.innerHTML = '<i class="fa-solid fa-exclamation-circle"></i> Erreur lors de la réindexation: ' + error.message;
+            
+            // Auto-hide error message after 8 seconds
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 8000);
+        } finally {
+            // Reset button state
+            reindexBtn.disabled = false;
+            reindexBtn.innerHTML = '<i class="fa-solid fa-refresh"></i> Réindexer la recherche';
+        }
     }
 }
 
