@@ -2,18 +2,17 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
-	"jujudb/handlers"
-	"jujudb/services"
+	"jujudb/internal/config"
+	"jujudb/internal/handlers"
+	"jujudb/internal/services"
 )
 
 var (
@@ -22,37 +21,7 @@ var (
 	tmpl  *template.Template
 )
 
-type Item struct {
-	ID          int       `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Location    string    `json:"location"`
-	Category    string    `json:"category"`
-	Quantity    int       `json:"quantity"`
-	ExpiryDate  *string   `json:"expiry_date"`
-	AddedDate   time.Time `json:"added_date"`
-}
-
-type SearchResult struct {
-	Item     Item    `json:"item"`
-	Distance int     `json:"distance"`
-	Score    float64 `json:"score"`
-}
-
 func init() {
-	store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
-	
-	// Check if we're in production (behind Traefik with HTTPS)
-	isProduction := os.Getenv("PRODUCTION") == "true" || os.Getenv("HTTPS") == "true"
-	
-	store.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 30, // 30 days
-		HttpOnly: true,
-		Secure:   isProduction, // Enable secure cookies in production
-		SameSite: http.SameSiteStrictMode,
-	}
-
 	// Configure logrus
 	if os.Getenv("PRODUCTION") == "true" || os.Getenv("LOG_FORMAT") == "json" {
 		logrus.SetFormatter(&logrus.JSONFormatter{})
@@ -64,31 +33,16 @@ func init() {
 
 func main() {
 	var err error
-	
-	// Database connection
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "localhost"
-	}
-	
-	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" {
-		dbUser = "jujudb"
-	}
-	
-	dbPassword := os.Getenv("DB_PASSWORD")
-	if dbPassword == "" {
-		dbPassword = "jujudb123"
-	}
-	
-	dbName := os.Getenv("DB_NAME")
-	if dbName == "" {
-		dbName = "jujudb"
-	}
 
-	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s sslmode=disable", 
-		dbHost, dbUser, dbPassword, dbName)
-	
+	// Load configuration
+	cfg := config.Load()
+
+	// Initialize session store
+	store = sessions.NewCookieStore([]byte(cfg.Session.Key))
+
+	// Database connection
+	connStr := cfg.Database.GetConnectionString()
+
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		logrus.WithError(err).Fatal("Erreur de connexion à la base de données")
@@ -104,14 +58,13 @@ func main() {
 	initDB()
 
 	// Load templates (legacy handlers may rely on this)
-	tmpl = template.Must(template.ParseGlob("templates/*.html"))
+	tmpl = template.Must(template.ParseGlob("web/static/html/*.html"))
 
 	// Instantiate handlers
 	authHandler := handlers.NewAuthHandler(store)
+
 	// Initialize Meilisearch service
-	meilisearchHost := "http://meilisearch:7700"
-	meilisearchKey := "jujudb-master-key-change-in-production"
-	meilisearchService, err := services.NewMeilisearchService(meilisearchHost, meilisearchKey)
+	meilisearchService, err := services.NewMeilisearchService(cfg.Meilisearch.Host, cfg.Meilisearch.MasterKey)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to initialize Meilisearch service")
 	}
@@ -129,10 +82,10 @@ func main() {
 
 	// Router
 	r := mux.NewRouter()
-	
+
 	// Static files
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static/"))))
-	
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
+
 	// Public routes
 	r.HandleFunc("/", authHandler.Root).Methods("GET")
 	r.HandleFunc("/login", templatesHandler.LoginPage).Methods("GET")
@@ -177,13 +130,8 @@ func main() {
 	api.HandleFunc("/categories/{id}", categoriesHandler.UpdateCategory).Methods("PUT")
 	api.HandleFunc("/categories/{id}", categoriesHandler.DeleteCategory).Methods("DELETE")
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	logrus.WithField("port", port).Info("JujuDB démarré")
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	logrus.WithField("port", cfg.Server.Port).Info("JujuDB démarré")
+	if err := http.ListenAndServe(":"+cfg.Server.Port, r); err != nil {
 		logrus.WithError(err).Fatal("Erreur serveur HTTP")
 	}
 }

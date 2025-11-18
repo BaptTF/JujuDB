@@ -2,27 +2,56 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: jujudb-postgres
-    env_file:
-      - .env
+    environment:
+      - POSTGRES_USER=${DB_USER:-jujudb}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-your-secure-postgres-password}
+      - POSTGRES_DB=${DB_NAME:-jujudb}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - jujudb-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jujudb -d jujudb"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jujudb} -d ${DB_NAME:-jujudb}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: jujudb-meilisearch
+    environment:
+      - MEILI_ENV=development
+      - MEILI_MASTER_KEY=jujudb-master-key-change-in-production
+      - MEILI_HTTP_ADDR=0.0.0.0:7700
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meilisearch_data:/meili_data
+    networks:
+      - jujudb-network
+    restart: unless-stopped
+    healthcheck:
+      test: set -o pipefail;curl -fsS http://meilisearch:7700/health | grep -q '{"status":"available"}'
+      timeout: 5s
+      retries: 5
 
   jujudb:
     build: .
     container_name: jujudb-app
-    env_file:
-      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=${DB_USER:-jujudb}
+      - DB_PASSWORD=${DB_PASSWORD:-your-secure-postgres-password}
+      - DB_NAME=${DB_NAME:-jujudb}
+      - PORT=${PORT:-8080}
+      - MEILI_HOST=${MEILI_HOST:-http://meilisearch:7700}
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-jujudb-master-key-change-in-production}
+      - PRODUCTION=true
     depends_on:
       postgres:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -36,13 +65,13 @@ services:
       - "traefik.http.services.jujudb.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
       # Security headers
-      - "traefik.http.middlewares.jujudb-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.middlewares.jujudb-headers.headers.sslredirect=true"
-      - "traefik.http.middlewares.jujudb-headers.headers.stsSeconds=31536000"
-      - "traefik.http.middlewares.jujudb-headers.headers.stsIncludeSubdomains=true"
-      - "traefik.http.middlewares.jujudb-headers.headers.stsPreload=true"
-      - "traefik.http.middlewares.jujudb-headers.headers.forceSTSHeader=true"
-      - "traefik.http.routers.jujudb.middlewares=jujudb-headers"
+      # - "traefik.http.middlewares.jujudb-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      # - "traefik.http.middlewares.jujudb-headers.headers.sslredirect=true"
+      # - "traefik.http.middlewares.jujudb-headers.headers.stsSeconds=31536000"
+      # - "traefik.http.middlewares.jujudb-headers.headers.stsIncludeSubdomains=true"
+      # - "traefik.http.middlewares.jujudb-headers.headers.stsPreload=true"
+      # - "traefik.http.middlewares.jujudb-headers.headers.forceSTSHeader=true"
+      # - "traefik.http.routers.jujudb.middlewares=jujudb-headers"
 
 volumes:
   postgres_data:

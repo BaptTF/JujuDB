@@ -12,7 +12,7 @@ type TemplatesHandler struct {
 
 // NewTemplatesHandler creates a new templates handler
 func NewTemplatesHandler() *TemplatesHandler {
-	templates := template.Must(template.ParseGlob("templates/*.html"))
+	templates := template.Must(template.ParseGlob("web/static/html/*.html"))
 	return &TemplatesHandler{Templates: templates}
 }
 

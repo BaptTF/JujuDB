@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/sirupsen/logrus"
-	"jujudb/services"
+	"jujudb/internal/services"
 )
 
 // SyncHandler handles synchronization operations
@@ -26,7 +26,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logrus.Info("Starting full sync to Meilisearch")
-	
+
 	err := h.Sync.SyncAllItems()
 	if err != nil {
 		logrus.WithError(err).Error("Failed to sync all items to Meilisearch")
@@ -41,6 +41,6 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-	
+
 	logrus.Info("Full sync to Meilisearch completed successfully")
 }

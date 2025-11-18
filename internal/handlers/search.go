@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"strconv"
 
-	"jujudb/services"
 	"github.com/sirupsen/logrus"
+	"jujudb/internal/services"
 )
 
 // SearchHandler handles search-related operations
 type SearchHandler struct {
-	DB             *sql.DB
-	Meilisearch    *services.MeilisearchService
+	DB          *sql.DB
+	Meilisearch *services.MeilisearchService
 }
 
 // NewSearchHandler creates a new search handler

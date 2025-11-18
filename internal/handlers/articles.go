@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"jujudb/services"
+	"jujudb/internal/services"
 )
 
 // Item represents an item in the inventory
@@ -89,13 +89,13 @@ func (h *ArticlesHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler":       "articles",
-			"action":        "GetItems",
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"location_id":   locationID,
+			"handler":         "articles",
+			"action":          "GetItems",
+			"method":          r.Method,
+			"path":            r.URL.Path,
+			"location_id":     locationID,
 			"sub_location_id": subLocationID,
-			"category_id":   categoryID,
+			"category_id":     categoryID,
 		}).Error("Failed to query items")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -171,15 +171,15 @@ func (h *ArticlesHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		item.CategoryID, item.Quantity, item.ExpiryDate, item.Notes).Scan(&item.ID, &item.AddedDate)
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler":        "articles",
-			"action":         "CreateItem",
-			"method":         r.Method,
-			"path":           r.URL.Path,
-			"name":           item.Name,
-			"location_id":    item.LocationID,
+			"handler":         "articles",
+			"action":          "CreateItem",
+			"method":          r.Method,
+			"path":            r.URL.Path,
+			"name":            item.Name,
+			"location_id":     item.LocationID,
 			"sub_location_id": item.SubLocationID,
-			"category_id":    item.CategoryID,
-			"quantity":       item.Quantity,
+			"category_id":     item.CategoryID,
+			"quantity":        item.Quantity,
 		}).Error("Failed to insert item")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
