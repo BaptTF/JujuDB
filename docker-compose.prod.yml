@@ -32,7 +32,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.jujudb.rule=Host(`jujudb.bapttf.com`)"
       - "traefik.http.routers.jujudb.entrypoints=websecure"
-      - "traefik.http.routers.jujudb.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.jujudb.tls.certresolver=letencrypt"
       - "traefik.http.services.jujudb.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
       # Security headers

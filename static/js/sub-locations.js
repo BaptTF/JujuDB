@@ -38,7 +38,8 @@ class SubLocationsManager {
             const url = locationId ? `/api/sub-locations?location_id=${locationId}` : '/api/sub-locations';
             const response = await fetch(url);
             if (response.ok) {
-                this.app.subLocations = await response.json();
+                const data = await response.json();
+                this.app.subLocations = Array.isArray(data) ? data : [];
                 // Update selects via LocationsManager if available
                 if (this.app.locationsManager && typeof this.app.locationsManager.populateSubLocationSelects === 'function') {
                     this.app.locationsManager.populateSubLocationSelects();
@@ -47,9 +48,12 @@ class SubLocationsManager {
                 if (typeof this.renderSubLocationsList === 'function') {
                     this.renderSubLocationsList();
                 }
+            } else {
+                this.app.subLocations = [];
             }
         } catch (error) {
             console.error('Error loading sub-locations:', error);
+            this.app.subLocations = [];
         }
     }
 

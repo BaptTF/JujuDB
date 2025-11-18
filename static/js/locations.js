@@ -153,29 +153,34 @@ class LocationsManager {
             return;
         }
         
-        // Show the filter select when a location is selected
-        filterSelect.style.display = 'block';
-        filterSelect.classList.add('show');
-        
         try {
             // Call API to get sub-locations for the selected location
             const response = await fetch(`/api/sub-locations?location_id=${selectedLocationId}`);
             if (response.ok) {
                 const subLocations = await response.json();
                 
-                // Populate with sub-locations from API
-                subLocations.forEach(subLocation => {
-                    const option = document.createElement('option');
-                    option.value = subLocation.id;
-                    option.textContent = subLocation.name;
-                    filterSelect.appendChild(option);
-                });
-                
-                // If no sub-locations available, hide the filter
-                if (subLocations.length === 0) {
+                // Ensure subLocations is an array
+                if (Array.isArray(subLocations) && subLocations.length > 0) {
+                    // Show the filter select only when there are sub-locations
+                    filterSelect.style.display = 'block';
+                    filterSelect.classList.add('show');
+                    
+                    // Populate with sub-locations from API
+                    subLocations.forEach(subLocation => {
+                        const option = document.createElement('option');
+                        option.value = subLocation.id;
+                        option.textContent = subLocation.name;
+                        filterSelect.appendChild(option);
+                    });
+                } else {
+                    // If no sub-locations available, hide the filter
                     filterSelect.style.display = 'none';
                     filterSelect.classList.remove('show');
                 }
+            } else {
+                // Hide filter on API error
+                filterSelect.style.display = 'none';
+                filterSelect.classList.remove('show');
             }
         } catch (error) {
             console.error('Error loading sub-locations for filter:', error);

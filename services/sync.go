@@ -105,7 +105,7 @@ func (s *SyncService) SyncItem(itemID int) error {
 		       COALESCE(c.name, '') as category_name
 		FROM items i
 		LEFT JOIN locations l ON i.location_id = l.id
-		LEFT JOIN sub_locations sl ON i.sub_location_idmeilisearch = sl.id
+		LEFT JOIN sub_locations sl ON i.sub_location_id = sl.id
 		LEFT JOIN categories c ON i.category_id = c.id
 		WHERE i.id = $1`
 

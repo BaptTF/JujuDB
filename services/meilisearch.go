@@ -1,24 +1,21 @@
 package services
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/meilisearch/meilisearch-go"
 	"github.com/sirupsen/logrus"
 )
 
-// MeilisearchService handles Meilisearch operations using HTTP API
+// MeilisearchService handles Meilisearch operations using official client
 type MeilisearchService struct {
-	host      string
-	apiKey    string
+	client    meilisearch.ServiceManager
+	index     meilisearch.IndexManager
 	indexName string
-	client    *http.Client
 }
 
 // SearchableItem represents an item in Meilisearch index
@@ -38,13 +35,28 @@ type SearchableItem struct {
 	Notes         *string   `json:"notes"`
 }
 
+// SearchRequest represents a search request
+type SearchRequest struct {
+	Query         string
+	LocationID    string
+	SubLocationID string
+	CategoryID    string
+	Limit         int
+	Offset        int
+}
+
 // NewMeilisearchService creates a new Meilisearch service
 func NewMeilisearchService(host, masterKey string) (*MeilisearchService, error) {
+	// Create Meilisearch client
+	client := meilisearch.New(host, meilisearch.WithAPIKey(masterKey))
+
+	indexName := "items"
+	index := client.Index(indexName)
+
 	service := &MeilisearchService{
-		host:      host,
-		apiKey:    masterKey,
-		indexName: "items",
-		client:    &http.Client{Timeout: 30 * time.Second},
+		client:    client,
+		index:     index,
+		indexName: indexName,
 	}
 
 	// Test connection
@@ -72,71 +84,27 @@ func NewMeilisearchService(host, masterKey string) (*MeilisearchService, error) 
 
 // testConnection tests the connection to Meilisearch
 func (s *MeilisearchService) testConnection() error {
-	req, err := http.NewRequest("GET", s.host+"/health", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check failed with status: %d", resp.StatusCode)
-	}
-	return nil
+	_, err := s.client.Health()
+	return err
 }
 
 // createIndex creates the Meilisearch index if it doesn't exist
 func (s *MeilisearchService) createIndex() error {
 	// Check if index exists
-	req, err := http.NewRequest("GET", s.host+"/indexes/"+s.indexName, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
+	_, err := s.index.GetStats()
+	if err == nil {
 		logrus.Info("Meilisearch index already exists")
 		return nil
 	}
 
 	// Create index
 	logrus.Info("Creating Meilisearch index: items")
-	indexConfig := map[string]interface{}{
-		"uid":        s.indexName,
-		"primaryKey": "id",
-	}
-
-	body, err := json.Marshal(indexConfig)
+	_, err = s.client.CreateIndex(&meilisearch.IndexConfig{
+		Uid:        s.indexName,
+		PrimaryKey: "id",
+	})
 	if err != nil {
-		return err
-	}
-
-	req, err = http.NewRequest("POST", s.host+"/indexes", bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err = s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to create index, status: %d", resp.StatusCode)
+		return fmt.Errorf("failed to create index: %w", err)
 	}
 
 	// Wait a bit for index creation
@@ -155,10 +123,6 @@ func (s *MeilisearchService) configureIndex() error {
 		"category",
 		"notes",
 	}
-	err := s.updateSettings("searchableAttributes", searchableAttrs)
-	if err != nil {
-		return fmt.Errorf("failed to update searchable attributes: %w", err)
-	}
 
 	// Set filterable attributes (fields that can be used for filtering)
 	filterableAttrs := []string{
@@ -168,10 +132,6 @@ func (s *MeilisearchService) configureIndex() error {
 		"expiry_date",
 		"added_date",
 	}
-	err = s.updateSettings("filterableAttributes", filterableAttrs)
-	if err != nil {
-		return fmt.Errorf("failed to update filterable attributes: %w", err)
-	}
 
 	// Set sortable attributes
 	sortableAttrs := []string{
@@ -179,7 +139,25 @@ func (s *MeilisearchService) configureIndex() error {
 		"expiry_date",
 		"name",
 	}
-	err = s.updateSettings("sortableAttributes", sortableAttrs)
+
+	// Convert string slices to interface slices only for filterable attributes
+	filterableInterfaces := make([]interface{}, len(filterableAttrs))
+	for i, v := range filterableAttrs {
+		filterableInterfaces[i] = v
+	}
+
+	// Update settings - different methods expect different types
+	_, err := s.index.UpdateSearchableAttributes(&searchableAttrs)
+	if err != nil {
+		return fmt.Errorf("failed to update searchable attributes: %w", err)
+	}
+
+	_, err = s.index.UpdateFilterableAttributes(&filterableInterfaces)
+	if err != nil {
+		return fmt.Errorf("failed to update filterable attributes: %w", err)
+	}
+
+	_, err = s.index.UpdateSortableAttributes(&sortableAttrs)
 	if err != nil {
 		return fmt.Errorf("failed to update sortable attributes: %w", err)
 	}
@@ -188,41 +166,9 @@ func (s *MeilisearchService) configureIndex() error {
 	return nil
 }
 
-// updateSettings updates a specific setting for the index
-func (s *MeilisearchService) updateSettings(settingName string, value interface{}) error {
-	settings := map[string]interface{}{
-		settingName: value,
-	}
-
-	body, err := json.Marshal(settings)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("PATCH", s.host+"/indexes/"+s.indexName+"/settings", bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to update %s, status: %d", settingName, resp.StatusCode)
-	}
-
-	return nil
-}
-
 // IndexItem adds or updates an item in the search index
 func (s *MeilisearchService) IndexItem(item SearchableItem) error {
-	documents := []SearchableItem{item}
-	return s.IndexItems(documents)
+	return s.IndexItems([]SearchableItem{item})
 }
 
 // IndexItems adds or updates multiple items in the search index
@@ -231,79 +177,39 @@ func (s *MeilisearchService) IndexItems(items []SearchableItem) error {
 		return nil
 	}
 
-	body, err := json.Marshal(items)
-	if err != nil {
-		return fmt.Errorf("failed to marshal items: %w", err)
+	// Convert items to interface slice for Meilisearch
+	docs := make([]interface{}, len(items))
+	for i, item := range items {
+		docs[i] = item
 	}
 
-	req, err := http.NewRequest("POST", s.host+"/indexes/"+s.indexName+"/documents", bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
+	_, err := s.index.AddDocuments(docs, nil)
 	if err != nil {
 		return fmt.Errorf("failed to index items: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to index items, status: %d", resp.StatusCode)
-	}
-
-	logrus.WithField("items_count", len(items)).Info("Items indexed in Meilisearch")
+	logrus.WithField("count", len(items)).Debug("Items indexed successfully")
 	return nil
 }
 
 // DeleteItem removes an item from the search index
 func (s *MeilisearchService) DeleteItem(itemID int) error {
-	req, err := http.NewRequest("DELETE", s.host+"/indexes/"+s.indexName+"/documents/"+strconv.Itoa(itemID), nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := s.client.Do(req)
+	_, err := s.index.DeleteDocument(strconv.Itoa(itemID))
 	if err != nil {
 		return fmt.Errorf("failed to delete item from index: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("failed to delete item, status: %d", resp.StatusCode)
-	}
-
-	logrus.WithField("item_id", itemID).Debug("Item deleted from Meilisearch")
+	logrus.WithField("item_id", itemID).Debug("Item deleted from index")
 	return nil
-}
-
-// SearchRequest represents a search request
-type SearchRequest struct {
-	Query         string
-	LocationID    string
-	SubLocationID string
-	CategoryID    string
-	Limit         int
-	Offset        int
-}
-
-// SearchResponse represents Meilisearch search response
-type SearchResponse struct {
-	Hits                 []map[string]interface{} `json:"hits"`
-	EstimatedTotalHits   int64                    `json:"estimatedTotalHits"`
-	ProcessingTimeMs     int64                    `json:"processingTimeMs"`
 }
 
 // Search performs a search query with filters
 func (s *MeilisearchService) Search(req SearchRequest) ([]SearchableItem, error) {
 	// Build search request
-	searchReq := map[string]interface{}{
-		"q":      req.Query,
-		"limit":  req.Limit,
-		"offset": req.Offset,
-		"sort":   []string{"added_date:desc"},
+	searchReq := &meilisearch.SearchRequest{
+		Limit:  int64(req.Limit),
+		Offset: int64(req.Offset),
+		Sort:   []string{"added_date:desc"},
 	}
 
 	// Build filters
@@ -319,42 +225,14 @@ func (s *MeilisearchService) Search(req SearchRequest) ([]SearchableItem, error)
 	}
 
 	if len(filters) > 0 {
-		searchReq["filter"] = strings.Join(filters, " AND ")
-	}
-
-	// Marshal search request
-	body, err := json.Marshal(searchReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal search request: %w", err)
+		filterStr := strings.Join(filters, " AND ")
+		searchReq.Filter = filterStr
 	}
 
 	// Perform search
-	httpReq, err := http.NewRequest("POST", s.host+"/indexes/"+s.indexName+"/search", bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(httpReq)
+	searchResp, err := s.index.Search(req.Query, searchReq)
 	if err != nil {
 		return nil, fmt.Errorf("search request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("search failed with status: %d", resp.StatusCode)
-	}
-
-	// Parse response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var searchResp SearchResponse
-	if err := json.Unmarshal(respBody, &searchResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	// Convert results
@@ -362,58 +240,16 @@ func (s *MeilisearchService) Search(req SearchRequest) ([]SearchableItem, error)
 	for _, hit := range searchResp.Hits {
 		var item SearchableItem
 
-		// Parse fields from hit
-		if id, ok := hit["id"].(float64); ok {
-			item.ID = int(id)
-		} else if idStr, ok := hit["id"].(string); ok {
-			if parsedID, err := strconv.Atoi(idStr); err == nil {
-				item.ID = parsedID
-			}
-		}
-		if name, ok := hit["name"].(string); ok {
-			item.Name = name
-		}
-		if desc, ok := hit["description"].(string); ok {
-			item.Description = desc
-		}
-		if loc, ok := hit["location"].(string); ok {
-			item.Location = loc
-		}
-		if subLoc, ok := hit["sub_location"].(string); ok {
-			item.SubLocation = subLoc
-		}
-		if cat, ok := hit["category"].(string); ok {
-			item.Category = cat
-		}
-		if qty, ok := hit["quantity"].(float64); ok {
-			item.Quantity = int(qty)
-		}
-		if notes, ok := hit["notes"].(string); ok && notes != "" {
-			item.Notes = &notes
-		}
-		if expiryDate, ok := hit["expiry_date"].(string); ok && expiryDate != "" {
-			item.ExpiryDate = &expiryDate
+		// Convert hit to JSON and then unmarshal to our struct
+		hitBytes, err := json.Marshal(hit)
+		if err != nil {
+			logrus.WithError(err).Warning("Failed to marshal search hit")
+			continue
 		}
 
-		// Handle nullable integer fields
-		if locID, ok := hit["location_id"].(float64); ok {
-			id := int(locID)
-			item.LocationID = &id
-		}
-		if subLocID, ok := hit["sub_location_id"].(float64); ok {
-			id := int(subLocID)
-			item.SubLocationID = &id
-		}
-		if catID, ok := hit["category_id"].(float64); ok {
-			id := int(catID)
-			item.CategoryID = &id
-		}
-
-		// Handle added_date
-		if addedDate, ok := hit["added_date"].(string); ok {
-			if parsedDate, err := time.Parse(time.RFC3339, addedDate); err == nil {
-				item.AddedDate = parsedDate
-			}
+		if err := json.Unmarshal(hitBytes, &item); err != nil {
+			logrus.WithError(err).Warning("Failed to unmarshal search hit")
+			continue
 		}
 
 		items = append(items, item)
