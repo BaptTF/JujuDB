@@ -3,16 +3,16 @@ services:
     image: postgres:15-alpine
     container_name: jujudb-postgres
     environment:
-      - POSTGRES_USER=${DB_USER:-jujudb}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-your-secure-postgres-password}
-      - POSTGRES_DB=${DB_NAME:-jujudb}
+      - POSTGRES_USER=jujudb
+      - POSTGRES_PASSWORD=jujudb123
+      - POSTGRES_DB=jujudb
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - jujudb-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jujudb} -d ${DB_NAME:-jujudb}"]
+      test: ["CMD-SHELL", "pg_isready -U jujudb -d jujudb"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,16 +37,17 @@ services:
       retries: 5
 
   jujudb:
-    build: .
+    image: git.bapttf.com/bapttf/jujudb:latest
     container_name: jujudb-app
     environment:
       - DB_HOST=postgres
-      - DB_USER=${DB_USER:-jujudb}
-      - DB_PASSWORD=${DB_PASSWORD:-your-secure-postgres-password}
-      - DB_NAME=${DB_NAME:-jujudb}
-      - PORT=${PORT:-8080}
-      - MEILI_HOST=${MEILI_HOST:-http://meilisearch:7700}
-      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-jujudb-master-key-change-in-production}
+      - DB_USER=jujudb
+      - DB_PASSWORD=jujudb123
+      - DB_NAME=jujudb
+      - PORT=8080
+      - SESSION_KEY=dev-session-key-change-in-production-32-chars-min
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=jujudb-master-key-change-in-production
       - PRODUCTION=true
     depends_on:
       postgres:
@@ -67,6 +68,7 @@ services:
 
 volumes:
   postgres_data:
+  meilisearch_data:
 
 networks:
   jujudb-network:
