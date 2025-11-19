@@ -13,6 +13,8 @@ type Config struct {
 	Server      ServerConfig
 	Meilisearch MeilisearchConfig
 	Session     SessionConfig
+	Auth        AuthConfig
+	Logging     LoggingConfig
 }
 
 // DatabaseConfig holds database configuration
@@ -49,6 +51,17 @@ type SessionConfig struct {
 	MaxAge int
 }
 
+// AuthConfig holds authentication configuration
+type AuthConfig struct {
+	Password string
+	TestMode bool
+}
+
+// LoggingConfig holds logging configuration
+type LoggingConfig struct {
+	Format string
+}
+
 // Load loads configuration from environment variables with defaults
 func Load() *Config {
 	config := &Config{
@@ -77,6 +90,13 @@ func Load() *Config {
 			Key:    getSessionKey(),
 			Secure: getEnv("PRODUCTION", "false") == "true" || getEnv("HTTPS", "false") == "true",
 			MaxAge: 86400 * 30, // 30 days
+		},
+		Auth: AuthConfig{
+			Password: getEnv("APP_PASSWORD", "famille123"),
+			TestMode: getEnv("TEST_MODE", "false") == "true",
+		},
+		Logging: LoggingConfig{
+			Format: getEnv("LOG_FORMAT", "text"),
 		},
 	}
 

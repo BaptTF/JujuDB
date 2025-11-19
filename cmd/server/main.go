@@ -3,7 +3,6 @@ package main
 import (
 	"html/template"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
@@ -21,18 +20,21 @@ var (
 )
 
 func init() {
-	// Configure logrus
-	if os.Getenv("PRODUCTION") == "true" || os.Getenv("LOG_FORMAT") == "json" {
-		logrus.SetFormatter(&logrus.JSONFormatter{})
-	} else {
-		logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-	}
+	// Configure logrus with defaults (will be overridden in main after config load)
+	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 	logrus.SetLevel(logrus.InfoLevel)
 }
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
+
+	// Configure logrus based on config
+	if cfg.Server.Production || cfg.Logging.Format == "json" {
+		logrus.SetFormatter(&logrus.JSONFormatter{})
+	} else {
+		logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	}
 
 	// Initialize session store
 	store = sessions.NewCookieStore([]byte(cfg.Session.Key))
@@ -63,7 +65,7 @@ func main() {
 	serviceLayer := services.NewService(repos, syncService)
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(store)
+	authHandler := handlers.NewAuthHandler(store, cfg)
 	templatesHandler := handlers.NewTemplatesHandler()
 	articlesHandler := handlers.NewArticlesHandler(serviceLayer.Items)
 	locationsHandler := handlers.NewLocationsHandler(serviceLayer.Locations)

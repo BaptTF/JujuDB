@@ -44,6 +44,9 @@ services:
       - DB_PASSWORD=jujudb123
       - DB_NAME=jujudb
       - PORT=8080
+      - APP_PASSWORD=famille123
+      - LOG_FORMAT=json
+      - TEST_MODE=false
       - SESSION_KEY=dev-session-key-change-in-production-32-chars-min
       - MEILI_HOST=http://meilisearch:7700
       - MEILI_MASTER_KEY=jujudb-master-key-change-in-production
@@ -75,5 +78,5 @@ networks:
   jujudb-network:
     driver: bridge
   proxy:
-    driver: bridge
-  #   external: true
+    # driver: bridge
+    external: true

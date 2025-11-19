@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gorilla/sessions"
 	"github.com/sirupsen/logrus"
+	"jujudb/internal/config"
 )
 
 // AuthHandler handles authentication-related operations
@@ -17,19 +17,11 @@ type AuthHandler struct {
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(store *sessions.CookieStore) *AuthHandler {
-	password := os.Getenv("APP_PASSWORD")
-	if password == "" {
-		password = "famille123" // fallback for development
-	}
-
-	// Check if we're in test mode
-	testMode := os.Getenv("TEST_MODE") == "true"
-
+func NewAuthHandler(store *sessions.CookieStore, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
-		Password: password,
+		Password: cfg.Auth.Password,
 		Store:    store,
-		TestMode: testMode,
+		TestMode: cfg.Auth.TestMode,
 	}
 }
 
