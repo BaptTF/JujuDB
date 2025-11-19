@@ -117,11 +117,6 @@ func getSessionKey() string {
 	return defaultKey
 }
 
-// GetConnectionString returns database connection string
-func (d *DatabaseConfig) GetConnectionString() string {
-	return "host=" + d.Host + " user=" + d.User + " password=" + d.Password + " dbname=" + d.Name + " sslmode=disable"
-}
-
 // GetGormConnectionString returns GORM-compatible connection string
 func (d *DatabaseConfig) GetGormConnectionString() string {
 	return "host=" + d.Host + " user=" + d.User + " password=" + d.Password + " dbname=" + d.Name +

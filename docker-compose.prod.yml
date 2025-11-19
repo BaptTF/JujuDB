@@ -8,7 +8,6 @@ services:
       - POSTGRES_DB=jujudb
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - jujudb-network
     healthcheck:
@@ -55,6 +54,8 @@ services:
       meilisearch:
         condition: service_healthy
     restart: unless-stopped
+    ports:
+      - "8080:8080"
     networks:
       - jujudb-network
       - proxy
@@ -74,4 +75,5 @@ networks:
   jujudb-network:
     driver: bridge
   proxy:
-    external: true
+    driver: bridge
+  #   external: true
