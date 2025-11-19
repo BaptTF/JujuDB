@@ -3,7 +3,7 @@ FROM golang:1.21-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache git gcc musl-dev
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -13,31 +13,20 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o main ./cmd/server
 
 # Final stage
-FROM alpine:latest
+FROM scratch
 
-RUN apk --no-cache add ca-certificates tzdata
-WORKDIR /root/
+WORKDIR /
 
 # Copy the binary from builder
 COPY --from=builder /app/main .
 
 # Copy static files and templates
-COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/static ./static
+COPY --from=builder /app/web ./web
 
 # Expose port
 EXPOSE 8080
-
-# Set environment variables
-ENV PORT=8080
-ENV DB_HOST=postgres
-ENV DB_USER=jujudb
-ENV DB_PASSWORD=your-secure-postgres-password
-ENV DB_NAME=jujudb
-ENV SESSION_KEY=your-super-secret-session-key-change-in-production
-ENV APP_PASSWORD=your-secure-app-password
 
 CMD ["./main"]
