@@ -22,7 +22,7 @@ services:
     image: getmeili/meilisearch:v1.6
     container_name: jujudb-meilisearch
     environment:
-      - MEILI_ENV=development
+      - MEILI_ENV=production
       - MEILI_MASTER_KEY=jujudb-master-key-change-in-production
       - MEILI_HTTP_ADDR=0.0.0.0:7700
       - MEILI_NO_ANALYTICS=true
@@ -64,14 +64,6 @@ services:
       - "traefik.http.routers.jujudb.tls.certresolver=letencrypt"
       - "traefik.http.services.jujudb.loadbalancer.server.port=8080"
       - "traefik.docker.network=proxy"
-      # Security headers
-      # - "traefik.http.middlewares.jujudb-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
-      # - "traefik.http.middlewares.jujudb-headers.headers.sslredirect=true"
-      # - "traefik.http.middlewares.jujudb-headers.headers.stsSeconds=31536000"
-      # - "traefik.http.middlewares.jujudb-headers.headers.stsIncludeSubdomains=true"
-      # - "traefik.http.middlewares.jujudb-headers.headers.stsPreload=true"
-      # - "traefik.http.middlewares.jujudb-headers.headers.forceSTSHeader=true"
-      # - "traefik.http.routers.jujudb.middlewares=jujudb-headers"
 
 volumes:
   postgres_data:

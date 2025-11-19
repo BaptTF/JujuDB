@@ -1,61 +1,38 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"jujudb/internal/models"
+	"jujudb/internal/repositories"
+	"jujudb/internal/services"
 )
-
-// Location represents a storage location
-type Location struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
 
 // LocationsHandler handles all location-related operations
 type LocationsHandler struct {
-	DB *sql.DB
+	service services.LocationService
 }
 
 // NewLocationsHandler creates a new locations handler
-func NewLocationsHandler(db *sql.DB) *LocationsHandler {
-	return &LocationsHandler{DB: db}
+func NewLocationsHandler(service services.LocationService) *LocationsHandler {
+	return &LocationsHandler{
+		service: service,
+	}
 }
 
 // GetLocations handles GET /api/locations
 func (h *LocationsHandler) GetLocations(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query("SELECT id, name FROM locations ORDER BY name")
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "GetLocations",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-		}).Error("Failed to query locations")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
+	filters := h.parseLocationFilters(r)
 
-	var locations []Location
-	for rows.Next() {
-		var location Location
-		err := rows.Scan(&location.ID, &location.Name)
-		if err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "locations",
-				"action":  "GetLocations",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-			}).Error("Failed to scan location row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		locations = append(locations, location)
+	locations, err := h.service.GetLocations(filters)
+	if err != nil {
+		h.logError("Failed to get locations", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -64,28 +41,16 @@ func (h *LocationsHandler) GetLocations(w http.ResponseWriter, r *http.Request) 
 
 // CreateLocation handles POST /api/locations
 func (h *LocationsHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
-	var location Location
+	var location models.Location
 	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "CreateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-		}).Warn("Invalid JSON payload for creating location")
+		h.logWarn("Invalid JSON payload for creating location", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err := h.DB.QueryRow("INSERT INTO locations (name) VALUES ($1) RETURNING id", location.Name).Scan(&location.ID)
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "CreateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"name":    location.Name,
-		}).Error("Failed to insert location")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.service.CreateLocation(&location); err != nil {
+		h.logError("Failed to create location", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -97,72 +62,27 @@ func (h *LocationsHandler) CreateLocation(w http.ResponseWriter, r *http.Request
 // UpdateLocation handles PUT /api/locations/{id}
 func (h *LocationsHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "UpdateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid location ID")
+		h.logWarn("Invalid location ID", err, r)
 		http.Error(w, "Invalid location ID", http.StatusBadRequest)
 		return
 	}
 
-	var location Location
+	var location models.Location
 	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "UpdateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Invalid JSON payload for updating location")
+		h.logWarn("Invalid JSON payload for updating location", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := h.DB.Exec("UPDATE locations SET name = $1 WHERE id = $2", location.Name, id)
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "UpdateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"name":    location.Name,
-		}).Error("Failed to update location")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	location.ID = uint(id)
+	if err := h.service.UpdateLocation(&location); err != nil {
+		h.logError("Failed to update location", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "UpdateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Error("Failed to get rows affected for update")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if rowsAffected == 0 {
-		logrus.WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "UpdateLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Location not found for update")
-		http.Error(w, "Location not found", http.StatusNotFound)
-		return
-	}
-
-	location.ID = id
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(location)
 }
@@ -170,271 +90,102 @@ func (h *LocationsHandler) UpdateLocation(w http.ResponseWriter, r *http.Request
 // DeleteLocation handles DELETE /api/locations/{id}
 func (h *LocationsHandler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid location ID")
+		h.logWarn("Invalid location ID", err, r)
 		http.Error(w, "Invalid location ID", http.StatusBadRequest)
 		return
 	}
 
-	// Support conditional deletion with dependency awareness
 	force := r.URL.Query().Get("force") == "true"
 
-	// Find related items either directly on location or via sub-locations
-	type relatedItem struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-	}
-
-	depQuery := `
-		SELECT id, name FROM items
-		WHERE location_id = $1
-		   OR sub_location_id IN (SELECT id FROM sub_locations WHERE location_id = $1)
-		ORDER BY name`
-
-	rows, qerr := h.DB.Query(depQuery, id)
-	if qerr != nil {
-		logrus.WithError(qerr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "depQuery",
-		}).Error("Failed to load related items before delete")
-		http.Error(w, qerr.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var related []relatedItem
-	for rows.Next() {
-		var it relatedItem
-		if err := rows.Scan(&it.ID, &it.Name); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "locations",
-				"action":  "DeleteLocation",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "scanRelated",
-			}).Error("Failed to scan related item row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	if err := h.service.DeleteLocation(uint(id), force); err != nil {
+		// Check if this is a dependency error
+		if err.Error() == "location has dependencies: 0 items, 0 sub-locations" {
+			// Return conflict with dependencies information
+			deps, depsErr := h.service.GetLocationDependencies(uint(id))
+			if depsErr == nil {
+				h.handleDependenciesError(w, deps, "location")
+				return
+			}
 		}
-		related = append(related, it)
-	}
 
-	// Also find related sub-locations for this location
-	type relatedSubLocation struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-	}
-	slRows, slErr := h.DB.Query(`SELECT id, name FROM sub_locations WHERE location_id = $1 ORDER BY name`, id)
-	if slErr != nil {
-		logrus.WithError(slErr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "depQuerySubLocs",
-		}).Error("Failed to load related sub-locations before delete")
-		http.Error(w, slErr.Error(), http.StatusInternalServerError)
+		h.logError("Failed to delete location", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	defer slRows.Close()
-
-	var relatedSubLocs []relatedSubLocation
-	for slRows.Next() {
-		var sl relatedSubLocation
-		if err := slRows.Scan(&sl.ID, &sl.Name); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "locations",
-				"action":  "DeleteLocation",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "scanRelatedSubLocs",
-			}).Error("Failed to scan related sub-location row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		relatedSubLocs = append(relatedSubLocs, sl)
-	}
-
-	if (len(related) > 0 || len(relatedSubLocs) > 0) && !force {
-		logrus.WithFields(logrus.Fields{
-			"handler":       "locations",
-			"action":        "DeleteLocation",
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"id":            id,
-			"related_count": len(related),
-			"related_subloc_count": len(relatedSubLocs),
-		}).Info("Location has related items or sub-locations, returning conflict for confirmation")
-		// Return conflict with related items for client-side confirmation
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		resp := map[string]interface{}{
-			"code":          "HAS_DEPENDENCIES",
-			"type":          "location",
-			"id":            id,
-			"related_items": related,
-			"related_sublocations": relatedSubLocs,
-			"message":       "Des éléments sont liés à cet emplacement (articles et/ou sous-emplacements)",
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Proceed with destructive deletion in a transaction
-	tx, txErr := h.DB.Begin()
-	if txErr != nil {
-		logrus.WithError(txErr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "txBegin",
-		}).Error("Failed to start transaction for delete")
-		http.Error(w, txErr.Error(), http.StatusInternalServerError)
-		return
-	}
-	// rollback on any subsequent error via named return err
-	var txErrDefer error
-	defer func() {
-		if txErrDefer != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	// If forcing and there are related items, delete them
-	var deletedBySubLoc int64
-	var deletedByLoc int64
-	var deletedSubLocs int64
-	if len(related) > 0 {
-		if res, execErr := tx.Exec(`DELETE FROM items WHERE sub_location_id IN (SELECT id FROM sub_locations WHERE location_id = $1)`, id); execErr != nil {
-			txErrDefer = execErr
-			logrus.WithError(execErr).WithFields(logrus.Fields{
-				"handler": "locations",
-				"action":  "DeleteLocation",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "deleteRelatedBySubLocations",
-			}).Error("Failed to delete items via sub-locations")
-			http.Error(w, execErr.Error(), http.StatusInternalServerError)
-			return
-		} else if c, _ := res.RowsAffected(); c >= 0 {
-			deletedBySubLoc = c
-		}
-		if res, execErr := tx.Exec(`DELETE FROM items WHERE location_id = $1`, id); execErr != nil {
-			txErrDefer = execErr
-			logrus.WithError(execErr).WithFields(logrus.Fields{
-				"handler": "locations",
-				"action":  "DeleteLocation",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "deleteRelatedByLocation",
-			}).Error("Failed to delete items directly on location")
-			http.Error(w, execErr.Error(), http.StatusInternalServerError)
-			return
-		} else if c, _ := res.RowsAffected(); c >= 0 {
-			deletedByLoc = c
-		}
-	}
-
-	// Delete sub-locations for this location
-	if res, execErr := tx.Exec(`DELETE FROM sub_locations WHERE location_id = $1`, id); execErr != nil {
-		txErrDefer = execErr
-		logrus.WithError(execErr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "deleteSubLocations",
-		}).Error("Failed to delete sub-locations for location")
-		http.Error(w, execErr.Error(), http.StatusInternalServerError)
-		return
-	} else if c, _ := res.RowsAffected(); c >= 0 {
-		deletedSubLocs = c
-	}
-
-	// Delete the location itself
-	result, derr := tx.Exec(`DELETE FROM locations WHERE id = $1`, id)
-	if derr != nil {
-		logrus.WithError(derr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "deleteLocation",
-		}).Error("Failed to delete location")
-		http.Error(w, derr.Error(), http.StatusInternalServerError)
-		return
-	}
-	rowsAffected, aerr := result.RowsAffected()
-	if aerr != nil {
-		logrus.WithError(aerr).WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "rowsAffected",
-		}).Error("Failed to get rows affected for location delete")
-		http.Error(w, aerr.Error(), http.StatusInternalServerError)
-		return
-	}
-	if rowsAffected == 0 {
-		logrus.WithFields(logrus.Fields{
-			"handler": "locations",
-			"action":  "DeleteLocation",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Location not found for delete")
-		http.Error(w, "Location not found", http.StatusNotFound)
-		return
-	}
-
-	if txErrDefer = tx.Commit(); txErrDefer != nil {
-		logrus.WithError(txErrDefer).WithFields(logrus.Fields{
-			"handler":           "locations",
-			"action":            "DeleteLocation",
-			"method":            r.Method,
-			"path":              r.URL.Path,
-			"id":                id,
-			"deleted_items_sub":  deletedBySubLoc,
-			"deleted_items_loc":  deletedByLoc,
-			"deleted_sub_locs":   deletedSubLocs,
-		}).Error("Failed to commit transaction for delete")
-		http.Error(w, txErrDefer.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	logrus.WithFields(logrus.Fields{
-		"handler":           "locations",
-		"action":            "DeleteLocation",
-		"method":            r.Method,
-		"path":              r.URL.Path,
-		"id":                id,
-		"force":             force,
-		"deleted_items_sub": deletedBySubLoc,
-		"deleted_items_loc": deletedByLoc,
-		"deleted_sub_locs":  deletedSubLocs,
-	}).Info("Location deleted successfully")
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Helper methods
+
+// parseLocationFilters parses query parameters into LocationFilters
+func (h *LocationsHandler) parseLocationFilters(r *http.Request) repositories.LocationFilters {
+	filters := repositories.LocationFilters{}
+
+	// Parse name filter
+	filters.Name = r.URL.Query().Get("name")
+
+	// Parse pagination
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			filters.Limit = limit
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
+			filters.Offset = offset
+		}
+	}
+
+	return filters
+}
+
+// handleDependenciesError returns a conflict response with dependencies information
+func (h *LocationsHandler) handleDependenciesError(w http.ResponseWriter, deps interface{}, resourceType string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+
+	response := map[string]interface{}{
+		"code":    "HAS_DEPENDENCIES",
+		"type":    resourceType,
+		"message": "Des éléments sont liés à cette ressource",
+	}
+
+	switch resourceType {
+	case "location":
+		if locationDeps, ok := deps.(*services.LocationDependencies); ok {
+			response["related_items"] = locationDeps.Items
+			response["related_sublocations"] = locationDeps.SubLocations
+		}
+	case "category":
+		if categoryDeps, ok := deps.(*services.CategoryDependencies); ok {
+			response["related_items"] = categoryDeps.Items
+		}
+	case "sub_location":
+		if subLocationDeps, ok := deps.(*services.SubLocationDependencies); ok {
+			response["related_items"] = subLocationDeps.Items
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Logging helpers
+
+func (h *LocationsHandler) logError(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "locations",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Error(message)
+}
+
+func (h *LocationsHandler) logWarn(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "locations",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Warn(message)
 }

@@ -17,10 +17,16 @@ type Config struct {
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Host     string
-	User     string
-	Password string
-	Name     string
+	Host         string
+	User         string
+	Password     string
+	Name         string
+	Port         string
+	SSLMode      string
+	Timezone     string
+	MaxOpenConns int
+	MaxIdleConns int
+	LogLevel     string
 }
 
 // ServerConfig holds server configuration
@@ -47,10 +53,16 @@ type SessionConfig struct {
 func Load() *Config {
 	config := &Config{
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			User:     getEnv("DB_USER", "jujudb"),
-			Password: getEnv("DB_PASSWORD", "jujudb123"),
-			Name:     getEnv("DB_NAME", "jujudb"),
+			Host:         getEnv("DB_HOST", "localhost"),
+			User:         getEnv("DB_USER", "jujudb"),
+			Password:     getEnv("DB_PASSWORD", "jujudb123"),
+			Name:         getEnv("DB_NAME", "jujudb"),
+			Port:         getEnv("DB_PORT", "5432"),
+			SSLMode:      getEnv("DB_SSLMODE", "disable"),
+			Timezone:     getEnv("DB_TIMEZONE", "UTC"),
+			MaxOpenConns: getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns: getEnvAsInt("DB_MAX_IDLE_CONNS", 5),
+			LogLevel:     getEnv("DB_LOG_LEVEL", "warn"),
 		},
 		Server: ServerConfig{
 			Port:       getEnv("PORT", "8080"),
@@ -79,6 +91,16 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// getEnvAsInt gets environment variable as integer with default value
+func getEnvAsInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
 // getSessionKey gets session key with production warning
 func getSessionKey() string {
 	defaultKey := "dev-session-key-change-in-production"
@@ -98,6 +120,12 @@ func getSessionKey() string {
 // GetConnectionString returns database connection string
 func (d *DatabaseConfig) GetConnectionString() string {
 	return "host=" + d.Host + " user=" + d.User + " password=" + d.Password + " dbname=" + d.Name + " sslmode=disable"
+}
+
+// GetGormConnectionString returns GORM-compatible connection string
+func (d *DatabaseConfig) GetGormConnectionString() string {
+	return "host=" + d.Host + " user=" + d.User + " password=" + d.Password + " dbname=" + d.Name +
+		" port=" + d.Port + " sslmode=" + d.SSLMode + " TimeZone=" + d.Timezone
 }
 
 // GetPortAsInt returns port as integer

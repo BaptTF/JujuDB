@@ -1,29 +1,30 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"jujudb/internal/models"
+	"jujudb/internal/repositories"
 	"jujudb/internal/services"
 )
 
-// Item represents an item in the inventory
-type Item struct {
-	ID            int       `json:"id"`
+// ItemDTO represents the JSON structure for item API requests/responses
+type ItemDTO struct {
+	ID            uint      `json:"id"`
 	Name          string    `json:"name"`
 	Description   string    `json:"description"`
-	LocationID    *int      `json:"location_id"`
-	SubLocationID *int      `json:"sub_location_id"`
-	CategoryID    *int      `json:"category_id"`
+	LocationID    *uint     `json:"location_id"`
+	SubLocationID *uint     `json:"sub_location_id"`
+	CategoryID    *uint     `json:"category_id"`
 	Quantity      int       `json:"quantity"`
-	ExpiryDate    *string   `json:"expiry_date"`
-	AddedDate     time.Time `json:"added_at"`
+	ExpiryDate    *string   `json:"expiry_date"` // Accept string date from frontend
+	AddedDate     time.Time `json:"added_date"`
+	AddedAt       time.Time `json:"added_at"` // For frontend compatibility
 	Notes         *string   `json:"notes"`
 	// Display fields from JOINs
 	Location    string `json:"location"`
@@ -33,303 +34,260 @@ type Item struct {
 
 // ArticlesHandler handles all article-related operations
 type ArticlesHandler struct {
-	DB   *sql.DB
-	Sync *services.SyncService
+	service services.ItemService
 }
 
 // NewArticlesHandler creates a new articles handler
-func NewArticlesHandler(db *sql.DB, syncService *services.SyncService) *ArticlesHandler {
+func NewArticlesHandler(service services.ItemService) *ArticlesHandler {
 	return &ArticlesHandler{
-		DB:   db,
-		Sync: syncService,
+		service: service,
 	}
 }
 
 // GetItems handles GET /api/items
 func (h *ArticlesHandler) GetItems(w http.ResponseWriter, r *http.Request) {
-	locationID := r.URL.Query().Get("location_id")
-	subLocationID := r.URL.Query().Get("sub_location_id")
-	categoryID := r.URL.Query().Get("category_id")
+	filters := h.parseItemFilters(r)
 
-	query := `
-		SELECT i.id, i.name, i.description, i.location_id, i.sub_location_id, i.category_id,
-		       i.quantity, i.expiry_date, i.added_date, i.notes,
-		       COALESCE(l.name, '') as location_name,
-		       COALESCE(sl.name, '') as sub_location_name,
-		       COALESCE(c.name, '') as category_name
-		FROM items i
-		LEFT JOIN locations l ON i.location_id = l.id
-		LEFT JOIN sub_locations sl ON i.sub_location_id = sl.id
-		LEFT JOIN categories c ON i.category_id = c.id
-		WHERE 1=1`
-
-	var args []interface{}
-	argCount := 0
-
-	if locationID != "" {
-		argCount++
-		query += fmt.Sprintf(" AND i.location_id = $%d", argCount)
-		args = append(args, locationID)
-	}
-
-	if subLocationID != "" {
-		argCount++
-		query += fmt.Sprintf(" AND i.sub_location_id = $%d", argCount)
-		args = append(args, subLocationID)
-	}
-
-	if categoryID != "" {
-		argCount++
-		query += fmt.Sprintf(" AND i.category_id = $%d", argCount)
-		args = append(args, categoryID)
-	}
-
-	query += " ORDER BY i.added_date DESC"
-
-	rows, err := h.DB.Query(query, args...)
+	items, err := h.service.GetItemsWithRelations(filters)
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler":         "articles",
-			"action":          "GetItems",
-			"method":          r.Method,
-			"path":            r.URL.Path,
-			"location_id":     locationID,
-			"sub_location_id": subLocationID,
-			"category_id":     categoryID,
-		}).Error("Failed to query items")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logError("Failed to get items", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	var items []Item
-	for rows.Next() {
-		var item Item
-		var expiryDate sql.NullString
-		var notes sql.NullString
-		var locationID, subLocationID, categoryID sql.NullInt64
-		err := rows.Scan(&item.ID, &item.Name, &item.Description, &locationID, &subLocationID, &categoryID,
-			&item.Quantity, &expiryDate, &item.AddedDate, &notes,
-			&item.Location, &item.SubLocation, &item.Category)
-		if err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "articles",
-				"action":  "GetItems",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-			}).Error("Failed to scan item row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if locationID.Valid {
-			item.LocationID = new(int)
-			*item.LocationID = int(locationID.Int64)
-		}
-		if subLocationID.Valid {
-			item.SubLocationID = new(int)
-			*item.SubLocationID = int(subLocationID.Int64)
-		}
-		if categoryID.Valid {
-			item.CategoryID = new(int)
-			*item.CategoryID = int(categoryID.Int64)
-		}
-		if expiryDate.Valid {
-			item.ExpiryDate = &expiryDate.String
-		}
-		if notes.Valid {
-			item.Notes = &notes.String
-		}
-
-		items = append(items, item)
-	}
+	// Convert to response format
+	response := h.convertItemsToDTO(items)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(items)
+	json.NewEncoder(w).Encode(response)
 }
 
 // CreateItem handles POST /api/items
 func (h *ArticlesHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
-	var item Item
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "CreateItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-		}).Warn("Invalid JSON payload for creating item")
+	var itemDTO ItemDTO
+	if err := json.NewDecoder(r.Body).Decode(&itemDTO); err != nil {
+		h.logWarn("Invalid JSON payload for creating item", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	query := `
-		INSERT INTO items (name, description, location_id, sub_location_id, category_id, quantity, expiry_date, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, added_date`
-
-	err := h.DB.QueryRow(query, item.Name, item.Description, item.LocationID, item.SubLocationID,
-		item.CategoryID, item.Quantity, item.ExpiryDate, item.Notes).Scan(&item.ID, &item.AddedDate)
+	// Convert DTO to model
+	item, err := h.dtoToModel(&itemDTO)
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler":         "articles",
-			"action":          "CreateItem",
-			"method":          r.Method,
-			"path":            r.URL.Path,
-			"name":            item.Name,
-			"location_id":     item.LocationID,
-			"sub_location_id": item.SubLocationID,
-			"category_id":     item.CategoryID,
-			"quantity":        item.Quantity,
-		}).Error("Failed to insert item")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logWarn("Invalid item data", err, r)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Sync item to Meilisearch
-	if h.Sync != nil {
-		go func() {
-			if err := h.Sync.SyncItem(item.ID); err != nil {
-				logrus.WithError(err).WithField("item_id", item.ID).Error("Failed to sync created item to Meilisearch")
-			}
-		}()
+	if err := h.service.CreateItem(item); err != nil {
+		h.logError("Failed to create item", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
+
+	// Convert back to DTO for response
+	response := h.modelToDTO(item)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(item)
+	json.NewEncoder(w).Encode(response)
 }
 
 // UpdateItem handles PUT /api/items/{id}
 func (h *ArticlesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "UpdateItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid item ID")
+		h.logWarn("Invalid item ID", err, r)
 		http.Error(w, "Invalid item ID", http.StatusBadRequest)
 		return
 	}
 
-	var item Item
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+	var itemDTO ItemDTO
+	if err := json.NewDecoder(r.Body).Decode(&itemDTO); err != nil {
+		h.logWarn("Invalid JSON payload for updating item", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	query := `
-		UPDATE items 
-		SET name = $1, description = $2, location_id = $3, sub_location_id = $4, 
-		    category_id = $5, quantity = $6, expiry_date = $7, notes = $8
-		WHERE id = $9`
-
-	result, err := h.DB.Exec(query, item.Name, item.Description, item.LocationID, item.SubLocationID,
-		item.CategoryID, item.Quantity, item.ExpiryDate, item.Notes, id)
+	// Convert DTO to model
+	item, err := h.dtoToModel(&itemDTO)
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "UpdateItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"name":    item.Name,
-		}).Error("Failed to update item")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logWarn("Invalid item data", err, r)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "UpdateItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Error("Failed to get rows affected for update")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	item.ID = uint(id)
+	if err := h.service.UpdateItem(item); err != nil {
+		h.logError("Failed to update item", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if rowsAffected == 0 {
-		logrus.WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "UpdateItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Item not found for update")
-		http.Error(w, "Item not found", http.StatusNotFound)
-		return
-	}
-
-	item.ID = id
-
-	// Sync updated item to Meilisearch
-	if h.Sync != nil {
-		go func() {
-			if err := h.Sync.SyncItem(id); err != nil {
-				logrus.WithError(err).WithField("item_id", id).Error("Failed to sync updated item to Meilisearch")
-			}
-		}()
-	}
+	// Convert back to DTO for response
+	response := h.modelToDTO(item)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(item)
+	json.NewEncoder(w).Encode(response)
 }
 
 // DeleteItem handles DELETE /api/items/{id}
 func (h *ArticlesHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "DeleteItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid item ID")
+		h.logWarn("Invalid item ID", err, r)
 		http.Error(w, "Invalid item ID", http.StatusBadRequest)
 		return
 	}
 
-	result, err := h.DB.Exec("DELETE FROM items WHERE id = $1", id)
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "articles",
-			"action":  "DeleteItem",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Error("Failed to delete item")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.service.DeleteItem(uint(id)); err != nil {
+		h.logError("Failed to delete item", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if rowsAffected == 0 {
-		http.Error(w, "Item not found", http.StatusNotFound)
-		return
-	}
-
-	// Remove item from Meilisearch
-	if h.Sync != nil {
-		go func() {
-			if err := h.Sync.DeleteItem(id); err != nil {
-				logrus.WithError(err).WithField("item_id", id).Error("Failed to delete item from Meilisearch")
-			}
-		}()
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Helper methods
+
+// dtoToModel converts ItemDTO to models.Item
+func (h *ArticlesHandler) dtoToModel(dto *ItemDTO) (*models.Item, error) {
+	item := &models.Item{
+		ID:            dto.ID,
+		Name:          dto.Name,
+		Description:   dto.Description,
+		LocationID:    dto.LocationID,
+		SubLocationID: dto.SubLocationID,
+		CategoryID:    dto.CategoryID,
+		Quantity:      dto.Quantity,
+		AddedDate:     dto.AddedDate,
+		Notes:         dto.Notes,
+	}
+
+	// Parse expiry date if provided
+	if dto.ExpiryDate != nil && *dto.ExpiryDate != "" {
+		expiryDate, err := time.Parse("2006-01-02", *dto.ExpiryDate)
+		if err != nil {
+			return nil, err
+		}
+		item.ExpiryDate = &expiryDate
+	}
+
+	return item, nil
+}
+
+// modelToDTO converts models.Item to ItemDTO
+func (h *ArticlesHandler) modelToDTO(item *models.Item) *ItemDTO {
+	dto := &ItemDTO{
+		ID:            item.ID,
+		Name:          item.Name,
+		Description:   item.Description,
+		LocationID:    item.LocationID,
+		SubLocationID: item.SubLocationID,
+		CategoryID:    item.CategoryID,
+		Quantity:      item.Quantity,
+		AddedDate:     item.AddedDate,
+		AddedAt:       item.AddedDate, // For frontend compatibility
+		Notes:         item.Notes,
+	}
+
+	// Format expiry date as string in ISO format for JavaScript Date parsing
+	if item.ExpiryDate != nil {
+		// Format as YYYY-MM-DD which JavaScript Date can parse
+		expiryDateStr := item.ExpiryDate.Format("2006-01-02")
+		dto.ExpiryDate = &expiryDateStr
+	}
+
+	// Add relation data if available
+	if item.Location != nil {
+		dto.Location = item.Location.Name
+	}
+	if item.SubLocation != nil {
+		dto.SubLocation = item.SubLocation.Name
+	}
+	if item.Category != nil {
+		dto.Category = item.Category.Name
+	}
+
+	return dto
+}
+
+// convertItemsToDTO converts a slice of model Items to DTO slice
+func (h *ArticlesHandler) convertItemsToDTO(items []models.Item) []ItemDTO {
+	response := make([]ItemDTO, len(items))
+	for i, item := range items {
+		response[i] = *h.modelToDTO(&item)
+	}
+	return response
+}
+
+// parseItemFilters parses query parameters into ItemFilters
+func (h *ArticlesHandler) parseItemFilters(r *http.Request) repositories.ItemFilters {
+	filters := repositories.ItemFilters{}
+
+	// Parse location_id
+	if locationIDStr := r.URL.Query().Get("location_id"); locationIDStr != "" {
+		if locationID, err := strconv.ParseUint(locationIDStr, 10, 32); err == nil {
+			locID := uint(locationID)
+			filters.LocationID = &locID
+		}
+	}
+
+	// Parse sub_location_id
+	if subLocationIDStr := r.URL.Query().Get("sub_location_id"); subLocationIDStr != "" {
+		if subLocationID, err := strconv.ParseUint(subLocationIDStr, 10, 32); err == nil {
+			subID := uint(subLocationID)
+			filters.SubLocationID = &subID
+		}
+	}
+
+	// Parse category_id
+	if categoryIDStr := r.URL.Query().Get("category_id"); categoryIDStr != "" {
+		if categoryID, err := strconv.ParseUint(categoryIDStr, 10, 32); err == nil {
+			catID := uint(categoryID)
+			filters.CategoryID = &catID
+		}
+	}
+
+	// Parse name filter
+	filters.Name = r.URL.Query().Get("name")
+
+	// Parse pagination
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			filters.Limit = limit
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
+			filters.Offset = offset
+		}
+	}
+
+	// Parse ordering
+	filters.OrderBy = r.URL.Query().Get("order_by")
+	filters.OrderDir = r.URL.Query().Get("order_dir")
+
+	return filters
+}
+
+// Logging helpers
+
+func (h *ArticlesHandler) logError(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "articles",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Error(message)
+}
+
+func (h *ArticlesHandler) logWarn(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "articles",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Warn(message)
 }

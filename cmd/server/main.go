@@ -1,22 +1,21 @@
 package main
 
 import (
-	"database/sql"
 	"html/template"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
-	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 	"jujudb/internal/config"
+	"jujudb/internal/database"
 	"jujudb/internal/handlers"
+	"jujudb/internal/repositories"
 	"jujudb/internal/services"
 )
 
 var (
-	db    *sql.DB
 	store *sessions.CookieStore
 	tmpl  *template.Template
 )
@@ -32,36 +31,24 @@ func init() {
 }
 
 func main() {
-	var err error
-
 	// Load configuration
 	cfg := config.Load()
 
 	// Initialize session store
 	store = sessions.NewCookieStore([]byte(cfg.Session.Key))
 
-	// Database connection
-	connStr := cfg.Database.GetConnectionString()
-
-	db, err = sql.Open("postgres", connStr)
+	// Initialize database
+	db, err := database.NewDatabase(cfg.Database)
 	if err != nil {
-		logrus.WithError(err).Fatal("Erreur de connexion à la base de données")
+		logrus.WithError(err).Fatal("Failed to initialize database")
 	}
 	defer db.Close()
-
-	// Test database connection
-	if err = db.Ping(); err != nil {
-		logrus.WithError(err).Fatal("Impossible de se connecter à la base de données")
-	}
-
-	// Initialize database
-	initDB()
 
 	// Load templates (legacy handlers may rely on this)
 	tmpl = template.Must(template.ParseGlob("web/static/html/*.html"))
 
-	// Instantiate handlers
-	authHandler := handlers.NewAuthHandler(store)
+	// Initialize repositories
+	repos := repositories.NewRepository(db.DB)
 
 	// Initialize Meilisearch service
 	meilisearchService, err := services.NewMeilisearchService(cfg.Meilisearch.Host, cfg.Meilisearch.MasterKey)
@@ -70,14 +57,19 @@ func main() {
 	}
 
 	// Initialize sync service
-	syncService := services.NewSyncService(db, meilisearchService)
+	syncService := services.NewSyncService(db.DB, meilisearchService)
 
+	// Initialize services
+	serviceLayer := services.NewService(repos, syncService)
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(store)
 	templatesHandler := handlers.NewTemplatesHandler()
-	articlesHandler := handlers.NewArticlesHandler(db, syncService)
-	locationsHandler := handlers.NewLocationsHandler(db)
-	subLocationsHandler := handlers.NewSubLocationsHandler(db)
-	categoriesHandler := handlers.NewCategoriesHandler(db)
-	searchHandler := handlers.NewSearchHandler(db, meilisearchService)
+	articlesHandler := handlers.NewArticlesHandler(serviceLayer.Items)
+	locationsHandler := handlers.NewLocationsHandler(serviceLayer.Locations)
+	subLocationsHandler := handlers.NewSubLocationsHandler(serviceLayer.SubLocations)
+	categoriesHandler := handlers.NewCategoriesHandler(serviceLayer.Categories)
+	searchHandler := handlers.NewSearchHandler(meilisearchService)
 	syncHandler := handlers.NewSyncHandler(syncService)
 
 	// Router
@@ -133,67 +125,5 @@ func main() {
 	logrus.WithField("port", cfg.Server.Port).Info("JujuDB démarré")
 	if err := http.ListenAndServe(":"+cfg.Server.Port, r); err != nil {
 		logrus.WithError(err).Fatal("Erreur serveur HTTP")
-	}
-}
-
-func initDB() {
-	query := `
-	-- Core reference tables
-	CREATE TABLE IF NOT EXISTS locations (
-		id SERIAL PRIMARY KEY,
-		name VARCHAR(100) NOT NULL UNIQUE
-	);
-
-	CREATE TABLE IF NOT EXISTS categories (
-		id SERIAL PRIMARY KEY,
-		name VARCHAR(100) NOT NULL UNIQUE
-	);
-
-	CREATE TABLE IF NOT EXISTS sub_locations (
-		id SERIAL PRIMARY KEY,
-		name VARCHAR(100) NOT NULL,
-		location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
-		UNIQUE(name, location_id)
-	);
-
-	-- Items table (normalized)
-	CREATE TABLE IF NOT EXISTS items (
-		id SERIAL PRIMARY KEY,
-		name VARCHAR(255) NOT NULL,
-		description TEXT,
-		location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
-		sub_location_id INTEGER REFERENCES sub_locations(id) ON DELETE SET NULL,
-		category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-		quantity INTEGER DEFAULT 1,
-		expiry_date DATE,
-		added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		notes TEXT
-	);
-
-	-- Indexes
-	CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
-	CREATE INDEX IF NOT EXISTS idx_items_location_id ON items(location_id);
-	CREATE INDEX IF NOT EXISTS idx_items_sub_location_id ON items(sub_location_id);
-	CREATE INDEX IF NOT EXISTS idx_items_category_id ON items(category_id);
-	CREATE INDEX IF NOT EXISTS idx_items_expiry_date ON items(expiry_date);
-
-	-- Migrations for older schemas
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS sub_location_id INTEGER REFERENCES sub_locations(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS notes TEXT;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS sub_location_id INTEGER REFERENCES sub_locations(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;
-	ALTER TABLE items ADD COLUMN IF NOT EXISTS notes TEXT;
-
-	-- Seed base reference data
-	INSERT INTO locations (name) VALUES ('Congélateur'), ('Réfrigérateur'), ('Garde-manger') ON CONFLICT DO NOTHING;
-	INSERT INTO categories (name) VALUES ('Viande'), ('Légumes'), ('Desserts'), ('Poisson'), ('Autres') ON CONFLICT DO NOTHING;
-	`
-
-	_, err := db.Exec(query)
-	if err != nil {
-		logrus.WithError(err).Fatal("Erreur lors de l'initialisation de la base de données")
 	}
 }

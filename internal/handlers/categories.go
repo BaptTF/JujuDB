@@ -1,61 +1,38 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"jujudb/internal/models"
+	"jujudb/internal/repositories"
+	"jujudb/internal/services"
 )
-
-// Category represents an item category
-type Category struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
 
 // CategoriesHandler handles all category-related operations
 type CategoriesHandler struct {
-	DB *sql.DB
+	service services.CategoryService
 }
 
 // NewCategoriesHandler creates a new categories handler
-func NewCategoriesHandler(db *sql.DB) *CategoriesHandler {
-	return &CategoriesHandler{DB: db}
+func NewCategoriesHandler(service services.CategoryService) *CategoriesHandler {
+	return &CategoriesHandler{
+		service: service,
+	}
 }
 
 // GetCategories handles GET /api/categories
 func (h *CategoriesHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query("SELECT id, name FROM categories ORDER BY name")
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "GetCategories",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-		}).Error("Failed to query categories")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
+	filters := h.parseCategoryFilters(r)
 
-	var categories []Category
-	for rows.Next() {
-		var category Category
-		err := rows.Scan(&category.ID, &category.Name)
-		if err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "categories",
-				"action":  "GetCategories",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-			}).Error("Failed to scan category row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		categories = append(categories, category)
+	categories, err := h.service.GetCategories(filters)
+	if err != nil {
+		h.logError("Failed to get categories", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -64,28 +41,16 @@ func (h *CategoriesHandler) GetCategories(w http.ResponseWriter, r *http.Request
 
 // CreateCategory handles POST /api/categories
 func (h *CategoriesHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
-	var category Category
+	var category models.Category
 	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "CreateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-		}).Warn("Invalid JSON payload for creating category")
+		h.logWarn("Invalid JSON payload for creating category", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err := h.DB.QueryRow("INSERT INTO categories (name) VALUES ($1) RETURNING id", category.Name).Scan(&category.ID)
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "CreateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"name":    category.Name,
-		}).Error("Failed to insert category")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := h.service.CreateCategory(&category); err != nil {
+		h.logError("Failed to create category", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -97,72 +62,27 @@ func (h *CategoriesHandler) CreateCategory(w http.ResponseWriter, r *http.Reques
 // UpdateCategory handles PUT /api/categories/{id}
 func (h *CategoriesHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "UpdateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid category ID")
+		h.logWarn("Invalid category ID", err, r)
 		http.Error(w, "Invalid category ID", http.StatusBadRequest)
 		return
 	}
 
-	var category Category
+	var category models.Category
 	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "UpdateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Invalid JSON payload for updating category")
+		h.logWarn("Invalid JSON payload for updating category", err, r)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result, err := h.DB.Exec("UPDATE categories SET name = $1 WHERE id = $2", category.Name, id)
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "UpdateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"name":    category.Name,
-		}).Error("Failed to update category")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	category.ID = uint(id)
+	if err := h.service.UpdateCategory(&category); err != nil {
+		h.logError("Failed to update category", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "UpdateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Error("Failed to get rows affected for update")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if rowsAffected == 0 {
-		logrus.WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "UpdateCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Category not found for update")
-		http.Error(w, "Category not found", http.StatusNotFound)
-		return
-	}
-
-	category.ID = id
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(category)
 }
@@ -170,178 +90,102 @@ func (h *CategoriesHandler) UpdateCategory(w http.ResponseWriter, r *http.Reques
 // DeleteCategory handles DELETE /api/categories/{id}
 func (h *CategoriesHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      vars["id"],
-		}).Warn("Invalid category ID")
+		h.logWarn("Invalid category ID", err, r)
 		http.Error(w, "Invalid category ID", http.StatusBadRequest)
 		return
 	}
 
 	force := r.URL.Query().Get("force") == "true"
 
-	// Check for related items
-	type relatedItem struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-	}
-
-	rows, qerr := h.DB.Query(`SELECT id, name FROM items WHERE category_id = $1 ORDER BY name`, id)
-	if qerr != nil {
-		logrus.WithError(qerr).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "depQuery",
-		}).Error("Failed to load related items before delete")
-		http.Error(w, qerr.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var related []relatedItem
-	for rows.Next() {
-		var it relatedItem
-		if err := rows.Scan(&it.ID, &it.Name); err != nil {
-			logrus.WithError(err).WithFields(logrus.Fields{
-				"handler": "categories",
-				"action":  "DeleteCategory",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "scanRelated",
-			}).Error("Failed to scan related item row")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	if err := h.service.DeleteCategory(uint(id), force); err != nil {
+		// Check if this is a dependency error
+		if err.Error() == "category has 0 items" {
+			// Return conflict with dependencies information
+			deps, depsErr := h.service.GetCategoryDependencies(uint(id))
+			if depsErr == nil {
+				h.handleDependenciesError(w, deps, "category")
+				return
+			}
 		}
-		related = append(related, it)
-	}
 
-	if len(related) > 0 && !force {
-		logrus.WithFields(logrus.Fields{
-			"handler":       "categories",
-			"action":        "DeleteCategory",
-			"method":        r.Method,
-			"path":          r.URL.Path,
-			"id":            id,
-			"related_count": len(related),
-		}).Info("Category has related items, returning conflict for confirmation")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		resp := map[string]interface{}{
-			"code":          "HAS_DEPENDENCIES",
-			"type":          "category",
-			"id":            id,
-			"related_items": related,
-			"message":       "Des articles sont liés à cette catégorie",
-		}
-		_ = json.NewEncoder(w).Encode(resp)
+		h.logError("Failed to delete category", err, r)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	// Transactional delete: delete related items first (if any), then the category
-	tx, txErr := h.DB.Begin()
-	if txErr != nil {
-		logrus.WithError(txErr).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "txBegin",
-		}).Error("Failed to start transaction for delete")
-		http.Error(w, txErr.Error(), http.StatusInternalServerError)
-		return
-	}
-	var txErrDefer error
-	defer func() {
-		if txErrDefer != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	if len(related) > 0 {
-		if _, txErrDefer = tx.Exec(`DELETE FROM items WHERE category_id = $1`, id); txErrDefer != nil {
-			logrus.WithError(txErrDefer).WithFields(logrus.Fields{
-				"handler": "categories",
-				"action":  "DeleteCategory",
-				"method":  r.Method,
-				"path":    r.URL.Path,
-				"id":      id,
-				"stage":   "deleteRelated",
-			}).Error("Failed to delete related items before deleting category")
-			http.Error(w, txErrDefer.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	result, derr := tx.Exec(`DELETE FROM categories WHERE id = $1`, id)
-	if derr != nil {
-		logrus.WithError(derr).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "deleteCategory",
-		}).Error("Failed to delete category")
-		http.Error(w, derr.Error(), http.StatusInternalServerError)
-		return
-	}
-	rowsAffected, aerr := result.RowsAffected()
-	if aerr != nil {
-		logrus.WithError(aerr).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "rowsAffected",
-		}).Error("Failed to get rows affected for category delete")
-		http.Error(w, aerr.Error(), http.StatusInternalServerError)
-		return
-	}
-	if rowsAffected == 0 {
-		logrus.WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-		}).Warn("Category not found for delete")
-		http.Error(w, "Category not found", http.StatusNotFound)
-		return
-	}
-
-	if txErrDefer = tx.Commit(); txErrDefer != nil {
-		logrus.WithError(txErrDefer).WithFields(logrus.Fields{
-			"handler": "categories",
-			"action":  "DeleteCategory",
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"id":      id,
-			"stage":   "txCommit",
-		}).Error("Failed to commit transaction for category delete")
-		http.Error(w, txErrDefer.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	logrus.WithFields(logrus.Fields{
-		"handler":       "categories",
-		"action":        "DeleteCategory",
-		"method":        r.Method,
-		"path":          r.URL.Path,
-		"id":            id,
-		"force":         force,
-		"related_count": len(related),
-	}).Info("Category deleted successfully")
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Helper methods
+
+// parseCategoryFilters parses query parameters into CategoryFilters
+func (h *CategoriesHandler) parseCategoryFilters(r *http.Request) repositories.CategoryFilters {
+	filters := repositories.CategoryFilters{}
+
+	// Parse name filter
+	filters.Name = r.URL.Query().Get("name")
+
+	// Parse pagination
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			filters.Limit = limit
+		}
+	}
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
+			filters.Offset = offset
+		}
+	}
+
+	return filters
+}
+
+// handleDependenciesError returns a conflict response with dependencies information
+func (h *CategoriesHandler) handleDependenciesError(w http.ResponseWriter, deps interface{}, resourceType string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+
+	response := map[string]interface{}{
+		"code":    "HAS_DEPENDENCIES",
+		"type":    resourceType,
+		"message": "Des éléments sont liés à cette ressource",
+	}
+
+	switch resourceType {
+	case "location":
+		if locationDeps, ok := deps.(*services.LocationDependencies); ok {
+			response["related_items"] = locationDeps.Items
+			response["related_sublocations"] = locationDeps.SubLocations
+		}
+	case "category":
+		if categoryDeps, ok := deps.(*services.CategoryDependencies); ok {
+			response["related_items"] = categoryDeps.Items
+		}
+	case "sub_location":
+		if subLocationDeps, ok := deps.(*services.SubLocationDependencies); ok {
+			response["related_items"] = subLocationDeps.Items
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Logging helpers
+
+func (h *CategoriesHandler) logError(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "categories",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Error(message)
+}
+
+func (h *CategoriesHandler) logWarn(message string, err error, r *http.Request) {
+	logrus.WithError(err).WithFields(logrus.Fields{
+		"handler": "categories",
+		"method":  r.Method,
+		"path":    r.URL.Path,
+	}).Warn(message)
 }

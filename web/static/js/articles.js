@@ -63,8 +63,12 @@ class ArticlesManager {
             const scoreDisplay = searchResult && searchResult.score !== undefined ?
                 `<div class="search-score">Score: ${Math.round(searchResult.score * 100)}%</div>` : '';
 
-            const expiryDate = item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('fr-FR') : 'Non définie';
-            const addedDate = new Date(item.added_at).toLocaleDateString('fr-FR');
+            const expiryDate = item.expiry_date && item.expiry_date !== '' ? 
+            (isNaN(new Date(item.expiry_date).getTime()) ? 'Date invalide' : new Date(item.expiry_date).toLocaleDateString('fr-FR')) : 
+            'Non définie';
+            const addedDate = item.added_date && item.added_date !== '' ? 
+                (isNaN(new Date(item.added_date).getTime()) ? 'Date invalide' : new Date(item.added_date).toLocaleDateString('fr-FR')) : 
+                'Non définie';
 
             // Get location and sub-location names
             const location = this.app.locations.find(l => l.id == item.location_id);
@@ -228,10 +232,14 @@ class ArticlesManager {
     }
 
     getExpiryClass(expiryDate) {
-        if (!expiryDate) return 'no-expiry';
+        if (!expiryDate || expiryDate === '') return 'no-expiry';
 
         const today = new Date();
         const expiry = new Date(expiryDate);
+        
+        // Check if the date is valid
+        if (isNaN(expiry.getTime())) return 'no-expiry';
+        
         const diffTime = expiry - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
