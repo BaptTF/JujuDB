@@ -62,35 +62,62 @@ func (s *itemService) GetItemWithRelations(id uint) (*models.Item, error) {
 
 // UpdateItem updates an existing item with validation and sync
 func (s *itemService) UpdateItem(item *models.Item) error {
-	// Validate item
-	if err := s.ValidateItem(item); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// Check if item exists
+	// Fetch existing item first
 	existing, err := s.repo.GetByID(item.ID)
 	if err != nil {
-		return fmt.Errorf("item not found: %w", err)
+		return &NotFoundError{Resource: "item", ID: item.ID}
+	}
+
+	// Merge: only overwrite fields that were actually provided
+	if item.Name != "" {
+		existing.Name = item.Name
+	}
+	if item.Description != "" {
+		existing.Description = item.Description
+	}
+	if item.LocationID != nil {
+		existing.LocationID = item.LocationID
+	}
+	if item.SubLocationID != nil {
+		existing.SubLocationID = item.SubLocationID
+	}
+	if item.CategoryID != nil {
+		existing.CategoryID = item.CategoryID
+	}
+	if item.Quantity != 0 {
+		existing.Quantity = item.Quantity
+	}
+	if item.ExpiryDate != nil {
+		existing.ExpiryDate = item.ExpiryDate
+	}
+	if item.Notes != nil {
+		existing.Notes = item.Notes
+	}
+
+	// Validate the merged result
+	if err := s.ValidateItem(existing); err != nil {
+		return NewValidationError(err)
 	}
 
 	// Update item
-	if err := s.repo.Update(item); err != nil {
+	if err := s.repo.Update(existing); err != nil {
 		return fmt.Errorf("failed to update item: %w", err)
 	}
+
+	// Copy back merged data for the handler response
+	*item = *existing
 
 	// Sync to Meilisearch asynchronously
 	if s.sync != nil {
 		go func() {
-			if err := s.sync.SyncItem(int(item.ID)); err != nil {
-				logrus.WithError(err).WithField("item_id", item.ID).Error("Failed to sync updated item to Meilisearch")
+			if err := s.sync.SyncItem(int(existing.ID)); err != nil {
+				logrus.WithError(err).WithField("item_id", existing.ID).Error("Failed to sync updated item to Meilisearch")
 			}
 		}()
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"item_id":  item.ID,
-		"old_name": existing.Name,
-		"new_name": item.Name,
+		"item_id": existing.ID,
 	}).Info("Item updated successfully")
 	return nil
 }

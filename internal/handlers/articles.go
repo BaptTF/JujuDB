@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -128,8 +129,19 @@ func (h *ArticlesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 
 	item.ID = uint(id)
 	if err := h.service.UpdateItem(item); err != nil {
-		h.logError("Failed to update item", err, r)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		var validationErr *services.ValidationError
+		var notFoundErr *services.NotFoundError
+		switch {
+		case errors.As(err, &validationErr):
+			h.logWarn("Invalid item update request", err, r)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.As(err, &notFoundErr):
+			h.logWarn("Item not found", err, r)
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			h.logError("Failed to update item", err, r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
