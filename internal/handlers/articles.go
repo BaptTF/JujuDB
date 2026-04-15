@@ -85,8 +85,16 @@ func (h *ArticlesHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-fetch with relations to resolve location/category names
+	itemWithRelations, err := h.service.GetItemWithRelations(item.ID)
+	if err != nil {
+		h.logError("Failed to fetch created item with relations", err, r)
+		// Fall back to item without relations
+		itemWithRelations = item
+	}
+
 	// Convert back to DTO for response
-	response := h.modelToDTO(item)
+	response := h.modelToDTO(itemWithRelations)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -125,8 +133,16 @@ func (h *ArticlesHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-fetch with relations to resolve location/category names
+	itemWithRelations, err := h.service.GetItemWithRelations(item.ID)
+	if err != nil {
+		h.logError("Failed to fetch updated item with relations", err, r)
+		// Fall back to item without relations
+		itemWithRelations = item
+	}
+
 	// Convert back to DTO for response
-	response := h.modelToDTO(item)
+	response := h.modelToDTO(itemWithRelations)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

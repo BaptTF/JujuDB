@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -78,8 +79,19 @@ func (h *SubLocationsHandler) UpdateSubLocation(w http.ResponseWriter, r *http.R
 
 	subLocation.ID = uint(id)
 	if err := h.service.UpdateSubLocation(&subLocation); err != nil {
-		h.logError("Failed to update sub-location", err, r)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		var validationErr *services.ValidationError
+		var notFoundErr *services.NotFoundError
+		switch {
+		case errors.As(err, &validationErr):
+			h.logWarn("Invalid sub-location update request", err, r)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.As(err, &notFoundErr):
+			h.logWarn("Sub-location not found", err, r)
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			h.logError("Failed to update sub-location", err, r)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 

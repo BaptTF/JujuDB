@@ -51,26 +51,38 @@ func (s *subLocationService) GetSubLocationWithRelations(id uint) (*models.SubLo
 
 // UpdateSubLocation updates an existing sub-location with validation
 func (s *subLocationService) UpdateSubLocation(subLocation *models.SubLocation) error {
-	// Validate sub-location
-	if err := s.ValidateSubLocation(subLocation); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// Check if sub-location exists
+	// Fetch existing sub-location first
 	existing, err := s.repo.GetByID(subLocation.ID)
 	if err != nil {
-		return fmt.Errorf("sub-location not found: %w", err)
+		return &NotFoundError{Resource: "sub-location", ID: subLocation.ID}
+	}
+
+	// Merge: only overwrite fields that were actually provided
+	oldName := existing.Name
+	if subLocation.Name != "" {
+		existing.Name = subLocation.Name
+	}
+	if subLocation.LocationID != 0 {
+		existing.LocationID = subLocation.LocationID
+	}
+
+	// Validate the merged result
+	if err := s.ValidateSubLocation(existing); err != nil {
+		return NewValidationError(err)
 	}
 
 	// Update sub-location
-	if err := s.repo.Update(subLocation); err != nil {
+	if err := s.repo.Update(existing); err != nil {
 		return fmt.Errorf("failed to update sub-location: %w", err)
 	}
 
+	// Copy back merged data for the handler response
+	*subLocation = *existing
+
 	logrus.WithFields(logrus.Fields{
-		"sub_location_id": subLocation.ID,
-		"old_name":        existing.Name,
-		"new_name":        subLocation.Name,
+		"sub_location_id": existing.ID,
+		"old_name":        oldName,
+		"new_name":        existing.Name,
 	}).Info("Sub-location updated successfully")
 	return nil
 }
