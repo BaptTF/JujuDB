@@ -1,11 +1,15 @@
 # JujuDB Makefile
 
-.PHONY: build run dev dev-stop clean migrate logs lint fmt deps help
+.PHONY: build build-cli run dev dev-stop clean migrate logs lint fmt deps help
 
 
-# Build the application
+# Build the server
 build:
-	go build -o jujudb .
+	go build -o bin/jujudb-server ./cmd/server
+
+# Build the CLI
+build-cli:
+	go build -o bin/jujudb ./cmd/cli
 
 # Run the application locally
 run:
@@ -49,7 +53,8 @@ deps:
 help:
 	@echo "Available commands:"
 
-	@echo "  build          - Build the application"
+	@echo "  build          - Build the server"
+	@echo "  build-cli      - Build the CLI"
 	@echo "  run            - Run the application locally"
 	@echo "  dev            - Start development environment"
 	@echo "  dev-stop       - Stop development environment"

@@ -7,6 +7,7 @@ require (
 	github.com/gorilla/sessions v1.2.1
 	github.com/meilisearch/meilisearch-go v0.33.0
 	github.com/sirupsen/logrus v1.9.3
+	github.com/spf13/cobra v1.10.2
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
 )
@@ -24,4 +25,8 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 )
 
-require github.com/gorilla/securecookie v1.1.1 // indirect
+require (
+	github.com/gorilla/securecookie v1.1.1 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+)
